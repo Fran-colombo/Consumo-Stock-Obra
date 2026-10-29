@@ -4,7 +4,7 @@ import { api, getToken, setToken, type User } from "../api/client";
 type AuthValue = {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
 };
 
@@ -25,10 +25,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  async function login(username: string, password: string) {
+  async function login(email: string, password: string) {
     const result = await api<{ access_token: string; user: User }>("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ email, password }),
     });
     setToken(result.access_token);
     setUser(result.user);

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 720
     sysadmin_user: str = ""
+    sysadmin_email: str = ""
     sysadmin_password: str = ""
     sysadmin_name: str = ""
     cors_origins: str = "http://localhost:8087,http://127.0.0.1:8087"

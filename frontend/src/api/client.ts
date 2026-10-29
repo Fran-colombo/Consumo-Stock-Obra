@@ -3,6 +3,7 @@ const TOKEN_KEY = "conkreto_token";
 export type User = {
   id: number;
   username: string;
+  email: string | null;
   full_name: string;
   role: "SYSADMIN" | "OPERADOR";
   is_active: boolean;

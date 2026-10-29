@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator
 
 
 def _dec(value: Decimal) -> str:
@@ -16,13 +16,31 @@ class ORMModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+def normalize_email(value: str) -> str:
+    email = value.strip().lower()
+    if "@" not in email or email.startswith("@") or email.endswith("@") or " " in email:
+        raise ValueError("El correo no es válido.")
+    return email
+
+
 class LoginIn(BaseModel):
-    username: str
+    email: str
     password: str
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, value: str) -> str:
+        return normalize_email(value)
 
 
 class UserIn(BaseModel):
-    username: str = Field(min_length=3, max_length=80)
+    email: str
+    username: str | None = Field(default=None, min_length=3, max_length=80)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, value: str) -> str:
+        return normalize_email(value)
     full_name: str = Field(min_length=1, max_length=160)
     password: str = Field(min_length=8, max_length=128)
     role: str

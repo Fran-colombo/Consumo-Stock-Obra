@@ -62,20 +62,46 @@ def ensure_reference_data(db) -> None:
             db.add(AppSetting(key=key, value="false"))
 
 
+def configured_admin_email(settings) -> str:
+    raw = (settings.sysadmin_email or "").strip()
+    if not raw and "@" in (settings.sysadmin_user or ""):
+        raw = settings.sysadmin_user
+    if not raw:
+        return ""
+    from app.schemas import normalize_email
+
+    return normalize_email(raw)
+
+
 def ensure_sysadmin(db) -> None:
-    total = db.scalar(select(func.count()).select_from(User))
-    if total:
-        return
     settings = get_settings()
-    if not settings.sysadmin_user or not settings.sysadmin_password or not settings.sysadmin_name:
+    try:
+        email = configured_admin_email(settings)
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+    existing = db.scalar(select(User).where(User.role == UserRole.SYSADMIN.value).order_by(User.id))
+    if existing is not None:
+        if email and not existing.email:
+            taken = db.scalar(select(User).where(User.email == email, User.id != existing.id))
+            if taken is None:
+                existing.email = email
+                if settings.sysadmin_password and len(settings.sysadmin_password) >= 8:
+                    existing.password_hash = hash_password(settings.sysadmin_password)
+                logging.getLogger(__name__).info("Administrador listo para ingresar con %s", email)
+        return
+    if db.scalar(select(func.count()).select_from(User)):
+        return
+    if not email or not settings.sysadmin_password or not settings.sysadmin_name:
         raise RuntimeError(
-            "No hay usuarios. Definí CONKRETO_SYSADMIN_USER, CONKRETO_SYSADMIN_PASSWORD y CONKRETO_SYSADMIN_NAME."
+            "No hay usuarios. Definí CONKRETO_SYSADMIN_EMAIL, CONKRETO_SYSADMIN_PASSWORD y CONKRETO_SYSADMIN_NAME."
         )
     if len(settings.sysadmin_password) < 8:
         raise RuntimeError("La clave inicial del administrador debe tener al menos 8 caracteres.")
+    username = settings.sysadmin_user.strip().lower() or email
     db.add(
         User(
-            username=settings.sysadmin_user.strip().lower(),
+            username=username,
+            email=email,
             full_name=settings.sysadmin_name.strip(),
             password_hash=hash_password(settings.sysadmin_password),
             role=UserRole.SYSADMIN.value,
@@ -91,8 +117,12 @@ def init_database() -> None:
         raise RuntimeError("Falta CONKRETO_JWT_SECRET.")
     data_dir = BACKEND_DIR / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
-    if settings.database_url.startswith("sqlite:///./"):
-        Path(settings.database_url.replace("sqlite:///./", "")).parent.mkdir(parents=True, exist_ok=True)
+    if settings.database_url.startswith("sqlite:///"):
+        raw = settings.database_url.removeprefix("sqlite:///")
+        if raw.startswith("./"):
+            Path(raw).parent.mkdir(parents=True, exist_ok=True)
+        elif raw.startswith("/"):
+            Path(raw).parent.mkdir(parents=True, exist_ok=True)
     database.get_engine()
     run_migrations()
     if database.SessionLocal is None:

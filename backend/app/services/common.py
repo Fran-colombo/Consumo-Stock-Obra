@@ -183,4 +183,4 @@ def finish_idempotency(db: Session, user: User, key: str, status: int, body: dic
 def user_brief(user: User | None) -> dict | None:
     if user is None:
         return None
-    return {"id": user.id, "username": user.username, "full_name": user.full_name, "role": user.role}
+    return {"id": user.id, "username": user.username, "email": user.email, "full_name": user.full_name, "role": user.role}

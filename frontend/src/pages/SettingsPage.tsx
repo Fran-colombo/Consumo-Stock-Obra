@@ -15,7 +15,8 @@ export function SettingsPage() {
   const [users, setUsers] = useState<Rec[]>([]);
   const [error, setError] = useState("");
   const [location, setLocation] = useState({ name: "", code: "", location_type: "DEPOSITO" });
-  const [account, setAccount] = useState({ username: "", full_name: "", password: "", role: "OPERADOR" });
+  const [account, setAccount] = useState({ email: "", full_name: "", password: "", role: "OPERADOR" });
+  const [showPassword, setShowPassword] = useState(false);
 
   function load() {
     api<typeof settings>("/api/settings").then(setSettings);
@@ -50,7 +51,7 @@ export function SettingsPage() {
     event.preventDefault();
     try {
       await api("/api/users", { method: "POST", body: JSON.stringify(account) });
-      setAccount({ username: "", full_name: "", password: "", role: "OPERADOR" });
+      setAccount({ email: "", full_name: "", password: "", role: "OPERADOR" });
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo crear el usuario.");
@@ -89,9 +90,14 @@ export function SettingsPage() {
       {user?.role === "SYSADMIN" ? (
         <form className="panel form-grid" onSubmit={createUser} style={{ marginTop: 14 }}>
           <h2 className="span-2">Usuarios</h2>
-          <div className="field"><label>Usuario</label><input required value={account.username} onChange={(event) => setAccount({ ...account, username: event.target.value })} /></div>
+          <div className="field"><label>Correo</label><input required type="email" value={account.email} onChange={(event) => setAccount({ ...account, email: event.target.value })} /></div>
           <div className="field"><label>Nombre</label><input required value={account.full_name} onChange={(event) => setAccount({ ...account, full_name: event.target.value })} /></div>
-          <div className="field"><label>Clave</label><input required type="password" value={account.password} onChange={(event) => setAccount({ ...account, password: event.target.value })} /></div>
+          <div className="field"><label>Clave</label>
+            <div className="password-row">
+              <input required type={showPassword ? "text" : "password"} value={account.password} onChange={(event) => setAccount({ ...account, password: event.target.value })} />
+              <button className="btn ghost" type="button" aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? "Ocultar" : "Mostrar"}</button>
+            </div>
+          </div>
           <div className="field"><label>Rol</label>
             <select value={account.role} onChange={(event) => setAccount({ ...account, role: event.target.value })}>
               <option value="OPERADOR">Operador</option>
@@ -99,7 +105,7 @@ export function SettingsPage() {
             </select>
           </div>
           <div className="span-2"><button className="btn" type="submit">Crear usuario</button></div>
-          <ul className="span-2">{users.map((row) => <li key={row.id}>{row.full_name} · {row.username} · {row.role}</li>)}</ul>
+          <ul className="span-2">{users.map((row) => <li key={row.id}>{row.full_name} · {row.email || row.username} · {row.role}</li>)}</ul>
         </form>
       ) : null}
       <div className="panel" style={{ marginTop: 14 }}>

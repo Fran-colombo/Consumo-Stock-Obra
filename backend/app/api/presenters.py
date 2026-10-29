@@ -46,6 +46,7 @@ def user_out(user: User) -> dict:
     return {
         "id": user.id,
         "username": user.username,
+        "email": user.email,
         "full_name": user.full_name,
         "role": user.role,
         "is_active": user.is_active,

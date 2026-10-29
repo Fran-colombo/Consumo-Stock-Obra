@@ -6,8 +6,9 @@ import { ErrorText } from "../components/ui";
 
 export function LoginPage() {
   const { user, login } = useAuth();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   if (user) return <Navigate to="/" replace />;
 
@@ -15,7 +16,7 @@ export function LoginPage() {
     event.preventDefault();
     setError("");
     try {
-      await login(username, password);
+      await login(email, password);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo ingresar.");
     }
@@ -35,12 +36,17 @@ export function LoginPage() {
         <p className="hint">Cada movimiento queda asociado a la persona que inicia sesión.</p>
         {error ? <ErrorText error={error} /> : null}
         <div className="field">
-          <label htmlFor="user">Usuario</label>
-          <input id="user" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required />
+          <label htmlFor="email">Correo</label>
+          <input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
         </div>
         <div className="field" style={{ marginTop: 12 }}>
           <label htmlFor="pass">Contraseña</label>
-          <input id="pass" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
+          <div className="password-row">
+            <input id="pass" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
+            <button className="btn ghost" type="button" aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>
+              {showPassword ? "Ocultar" : "Mostrar"}
+            </button>
+          </div>
         </div>
         <button className="btn" type="submit" style={{ marginTop: 16 }}>Entrar</button>
       </form>

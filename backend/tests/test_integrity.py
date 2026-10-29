@@ -6,8 +6,8 @@ from app.models.entities import User
 from app.services.consumption import register_consumption
 
 
-def auth(client, username="admin", password="admin-pass-123"):
-    response = client.post("/api/auth/login", json={"username": username, "password": password})
+def auth(client, email="admin@conkreto.local", password="admin-pass-123"):
+    response = client.post("/api/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200, response.text
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

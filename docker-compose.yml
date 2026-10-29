@@ -1,0 +1,18 @@
+services:
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      CONKRETO_DATABASE_URL: sqlite:////data/conkreto.db
+    volumes:
+      - ./backend/data:/data
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8087:8087"

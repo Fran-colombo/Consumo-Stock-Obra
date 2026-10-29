@@ -169,10 +169,9 @@ def _search(model, column, q: str | None):
 
 @router.post("/auth/login")
 def login(body: LoginIn, db: Session = Depends(get_db)):
-    username = body.username.strip().lower()
-    user = db.scalar(select(User).where(User.username == username))
+    user = db.scalar(select(User).where(User.email == body.email))
     if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
-        raise AppError(401, "Usuario o contraseña incorrectos.")
+        raise AppError(401, "Correo o contraseña incorrectos.")
     return {"access_token": create_access_token(user.id, user.role), "token_type": "bearer", "user": user_out(user)}
 
 
@@ -192,11 +191,15 @@ def create_user(body: UserIn, db: Session = Depends(get_db), actor: User = Depen
     role = body.role.strip().upper()
     if role not in (UserRole.SYSADMIN.value, UserRole.OPERADOR.value):
         raise AppError(422, "El rol tiene que ser SYSADMIN u OPERADOR.")
-    username = body.username.strip().lower()
+    email = body.email
+    username = (body.username or email).strip().lower()
+    if db.scalar(select(User).where(User.email == email)):
+        raise AppError(409, "Ese correo ya existe.")
     if db.scalar(select(User).where(User.username == username)):
         raise AppError(409, "Ese nombre de usuario ya existe.")
     user = User(
         username=username,
+        email=email,
         full_name=body.full_name.strip(),
         password_hash=hash_password(body.password),
         role=role,
@@ -207,7 +210,7 @@ def create_user(body: UserIn, db: Session = Depends(get_db), actor: User = Depen
     db.flush()
     from app.services.common import audit
 
-    audit(db, actor, "CREAR_USUARIO", "user", user.id, None, {"username": user.username, "role": user.role})
+    audit(db, actor, "CREAR_USUARIO", "user", user.id, None, {"email": user.email, "role": user.role})
     return user_out(user)
 
 
