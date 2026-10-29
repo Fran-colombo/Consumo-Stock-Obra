@@ -1,27 +1,25 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { useNotice } from "../components/ui";
-import { formatQty, labelOf } from "../lib/format";
+import { formatQty } from "../lib/format";
 
 type Rec = Record<string, any>;
 
-const REASONS = [
-  ["FALTAN_MATERIALES", "Faltan materiales"],
-  ["OTRAS_PRIORIDADES", "Hay otras prioridades"],
-  ["HAY_QUE_HACER_ANTES", "Hay que hacer algo antes"],
-];
+function previewVolume(length: string, width: string, thickness: string) {
+  const volume = Number(length) * Number(width) * Number(thickness);
+  return Number.isFinite(volume) && volume > 0 ? volume : null;
+}
 
 export function RubricsPage() {
   const notice = useNotice();
   const [rows, setRows] = useState<Rec[]>([]);
-  const [units, setUnits] = useState<Rec[]>([]);
-  const [materials, setMaterials] = useState<Rec[]>([]);
   const [works, setWorks] = useState<Rec[]>([]);
+  const [formulas, setFormulas] = useState<Rec[]>([]);
   const [tasks, setTasks] = useState<Rec[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState({ name: "", code: "" });
-  const [line, setLine] = useState({ material_id: "", coefficient: "" });
-  const [job, setJob] = useState({ work_id: "", quantity: "", pending_reason: "FALTAN_MATERIALES" });
+  const [formulaId, setFormulaId] = useState("");
+  const [job, setJob] = useState({ work_id: "", length_m: "", width_m: "", thickness_m: "" });
 
   const selected = rows.find((row) => row.id === selectedId) || null;
 
@@ -34,8 +32,7 @@ export function RubricsPage() {
 
   useEffect(() => {
     loadRubrics();
-    api<Rec[]>("/api/units").then(setUnits);
-    api<{ items: Rec[] }>("/api/materials?page_size=100").then((data) => setMaterials(data.items));
+    api<Rec[]>("/api/formulas").then(setFormulas);
     api<{ items: Rec[] }>("/api/works?page_size=100").then((data) => setWorks(data.items));
   }, []);
 
@@ -50,59 +47,36 @@ export function RubricsPage() {
       const created = await api<Rec>("/api/rubrics", { method: "POST", body: JSON.stringify({ ...form, description: null }) });
       setForm({ name: "", code: "" });
       loadRubrics(created.id);
-      notice.ok(`Quedó el rubro ${created.name}. Ahora cargá qué materiales usa.`);
+      notice.ok(`Quedó el rubro ${created.name}.`);
     } catch (err) {
       notice.fail(err instanceof ApiError ? err.message : "No se pudo crear el rubro.");
-    }
-  }
-
-  async function saveUnit(unitId: string) {
-    if (!selected) return;
-    try {
-      const updated = await api<Rec>(`/api/rubrics/${selected.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ coverage_unit_id: Number(unitId) }),
-      });
-      setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
-      notice.ok(`${updated.name} se mide en ${updated.coverage_unit_name}.`);
-    } catch (err) {
-      notice.fail(err instanceof ApiError ? err.message : "No se pudo guardar la unidad.");
-    }
-  }
-
-  async function addLine(event: FormEvent) {
-    event.preventDefault();
-    if (!selected) return;
-    try {
-      const updated = await api<Rec>(`/api/rubrics/${selected.id}/recipe`, {
-        method: "POST",
-        body: JSON.stringify({ material_id: Number(line.material_id), coefficient: line.coefficient }),
-      });
-      setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
-      setLine({ material_id: "", coefficient: "" });
-      notice.ok("La receta quedó guardada. No hace falta volver a cargarla en cada tarea.");
-    } catch (err) {
-      notice.fail(err instanceof ApiError ? err.message : "No se pudo guardar la receta.");
     }
   }
 
   async function addTask(event: FormEvent) {
     event.preventDefault();
     if (!selected) return;
+    if (!formulaId) {
+      notice.fail("Elegí la fórmula.");
+      return;
+    }
     try {
       const task = await api<Rec>(`/api/rubrics/${selected.id}/tasks`, {
         method: "POST",
         body: JSON.stringify({
           work_id: Number(job.work_id),
-          quantity: job.quantity,
-          pending_reason: job.pending_reason,
+          formula_id: Number(formulaId),
+          length_m: job.length_m,
+          width_m: job.width_m,
+          thickness_m: job.thickness_m,
         }),
       });
-      setJob({ work_id: "", quantity: "", pending_reason: "FALTAN_MATERIALES" });
+      const volume = previewVolume(job.length_m, job.width_m, job.thickness_m);
+      setJob({ work_id: "", length_m: "", width_m: "", thickness_m: "" });
       const next = await api<Rec[]>(`/api/tasks?rubric_id=${selected.id}`);
       setTasks(next);
-      const needs = (selected.recipe || []).map((item: Rec) => `${formatQty(Number(job.quantity) * Number(item.coefficient))} ${item.unit_name} de ${item.material_name}`);
-      notice.ok(needs.length ? `${task.work_name} quedó pendiente. Hace falta ${needs.join(", ")}.` : "La tarea quedó pendiente.");
+      const needs = (task.needs || []).map((item: Rec) => `${formatQty(item.needed)} ${item.unit_name} de ${item.material_name}`);
+      notice.ok(needs.length ? `${task.work_name} quedó pendiente. Son ${formatQty(volume)} m³. Hace falta ${needs.join(", ")}.` : "La tarea quedó pendiente.");
     } catch (err) {
       notice.fail(err instanceof ApiError ? err.message : "No se pudo crear la tarea.");
     }
@@ -114,7 +88,7 @@ export function RubricsPage() {
       <div className="page-head">
         <div>
           <h1>Rubros y tareas</h1>
-          <p>La mezcla se carga una vez. Después solo decís la obra y cuánto hay que cubrir.</p>
+          <p>El rubro ordena el trabajo. La fórmula se elige al crear la tarea, y las medidas van en metros.</p>
         </div>
       </div>
       <div className="grid grid-2">
@@ -129,7 +103,7 @@ export function RubricsPage() {
             {rows.map((row) => (
               <button key={row.id} type="button" className={row.id === selectedId ? "active" : ""} onClick={() => setSelectedId(row.id)}>
                 <strong>{row.name}</strong>
-                <div className="hint">{row.code}{row.recipe?.length ? ` · ${row.recipe.length} materiales` : " · sin receta"}</div>
+                <div className="hint">{row.code}</div>
               </button>
             ))}
           </div>
@@ -138,57 +112,71 @@ export function RubricsPage() {
           <div className="panel">
             <h2>{selected.name}</h2>
             <div className="field">
-              <label htmlFor="unit">Se mide en</label>
-              <select id="unit" value={selected.coverage_unit_id || ""} onChange={(event) => saveUnit(event.target.value)}>
+              <label>Fórmula</label>
+              <select required value={formulaId} onChange={(event) => setFormulaId(event.target.value)}>
                 <option value="">Elegir</option>
-                {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+                {formulas.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
               </select>
-              <span className="hint">Por ejemplo metros cuadrados o cúbicos. Es la medida de lo que hay que cubrir.</span>
+              <span className="hint">Si no está, cargala en Fórmulas para tareas.</span>
             </div>
-            <h3>Qué usa, por cada uno</h3>
-            {selected.recipe?.length ? (
-              <ul>{selected.recipe.map((item: Rec) => <li key={item.id}>{formatQty(item.coefficient)} {item.unit_name} de {item.material_name}</li>)}</ul>
-            ) : <p className="hint">Todavía no tiene materiales.</p>}
-            <form className="form-grid" onSubmit={addLine}>
-              <div className="field"><label>Material</label>
-                <select required value={line.material_id} onChange={(event) => setLine({ ...line, material_id: event.target.value })}>
-                  <option value="">Elegir</option>
-                  {materials.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
-                </select>
-              </div>
-              <div className="field"><label>Cuánto por cada unidad</label><input required value={line.coefficient} onChange={(event) => setLine({ ...line, coefficient: event.target.value })} /></div>
-              <div className="span-2"><button className="action secondary" type="submit">Guardar en la receta</button></div>
-            </form>
             <h3>Tareas</h3>
             {tasks.length === 0 ? <p className="hint">Este rubro todavía no tiene tareas.</p> : tasks.map((task) => (
               <article key={task.id} style={{ marginBottom: 12 }}>
-                <strong>{task.work_name}</strong>
-                <p className="hint">{formatQty(task.planned_qty)} {task.unit_code} · {labelOf(task.pending_reason)}</p>
-                <ul>
-                  {(selected.recipe || []).map((item: Rec) => (
-                    <li key={item.id}>{formatQty(Number(task.planned_qty) * Number(item.coefficient))} {item.unit_name} de {item.material_name}</li>
-                  ))}
-                </ul>
+                <strong>{task.work_name}</strong> {task.formula_name ? <span className="hint">· {task.formula_name}</span> : null}
+                <p className="hint">{task.length_m ? `${formatQty(task.length_m)} m × ${formatQty(task.width_m)} m × ${formatQty(task.thickness_m)} m = ${formatQty(task.planned_qty)} m³` : `${formatQty(task.planned_qty)} ${task.unit_code || ""}`}</p>
+                <ul>{(task.needs || []).map((item: Rec) => <li key={item.material_id}>{formatQty(item.needed)} {item.unit_name} de {item.material_name}</li>)}</ul>
               </article>
             ))}
-            <form className="form-grid" onSubmit={addTask}>
-              <div className="field"><label>Obra</label>
-                <select required value={job.work_id} onChange={(event) => setJob({ ...job, work_id: event.target.value })}>
-                  <option value="">Elegir</option>
-                  {works.map((work) => <option key={work.id} value={work.id}>{work.name}</option>)}
-                </select>
-              </div>
-              <div className="field"><label>Cuánto hay que cubrir</label><input required value={job.quantity} onChange={(event) => setJob({ ...job, quantity: event.target.value })} /></div>
-              <div className="field span-2"><label>Por qué queda pendiente</label>
-                <select value={job.pending_reason} onChange={(event) => setJob({ ...job, pending_reason: event.target.value })}>
-                  {REASONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-              </div>
-              <div className="span-2"><button className="action" type="submit">Crear tarea</button></div>
-            </form>
+            <TaskMeasures job={job} setJob={setJob} onSubmit={addTask} works={works} volume={previewVolume(job.length_m, job.width_m, job.thickness_m)} recipe={formulas.find((row) => String(row.id) === formulaId)?.lines || []} waste={formulas.find((row) => String(row.id) === formulaId)?.waste_percent} />
           </div>
         ) : <div className="panel"><p className="hint">Creá el primer rubro.</p></div>}
       </div>
     </section>
+  );
+}
+
+export function TaskMeasures({
+  job,
+  setJob,
+  onSubmit,
+  works,
+  volume,
+  recipe,
+  waste,
+  hideWork,
+}: {
+  job: { work_id: string; length_m: string; width_m: string; thickness_m: string };
+  setJob: (value: { work_id: string; length_m: string; width_m: string; thickness_m: string }) => void;
+  onSubmit: (event: FormEvent) => void;
+  works?: Rec[];
+  volume: number | null;
+  recipe: Rec[];
+  waste?: string | number | null;
+  hideWork?: boolean;
+}) {
+  const margin = Number(waste || 0);
+  return (
+    <form className="form-grid" onSubmit={onSubmit}>
+      {hideWork ? null : (
+        <div className="field"><label>Obra</label>
+          <select required value={job.work_id} onChange={(event) => setJob({ ...job, work_id: event.target.value })}>
+            <option value="">Elegir</option>
+            {(works || []).map((work) => <option key={work.id} value={work.id}>{work.name}</option>)}
+          </select>
+        </div>
+      )}
+      <div className="field"><label>Largo (m)</label><input required value={job.length_m} onChange={(event) => setJob({ ...job, length_m: event.target.value })} /></div>
+      <div className="field"><label>Ancho (m)</label><input required value={job.width_m} onChange={(event) => setJob({ ...job, width_m: event.target.value })} /></div>
+      <div className="field"><label>Espesor (m)</label><input required value={job.thickness_m} onChange={(event) => setJob({ ...job, thickness_m: event.target.value })} /></div>
+      <p className="span-2 hint">{volume ? `Volumen: ${formatQty(volume)} m³.` : "El volumen es largo por ancho por espesor."}</p>
+      {volume && recipe.length ? (
+        <ul className="span-2">
+          {recipe.map((item) => (
+            <li key={item.id}>{formatQty(volume * Number(item.coefficient) * (1 + margin / 100))} {item.unit_name} de {item.material_name}</li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="span-2"><button className="action" type="submit">Crear tarea</button></div>
+    </form>
   );
 }

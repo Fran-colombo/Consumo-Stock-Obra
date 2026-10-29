@@ -562,28 +562,33 @@ def test_recipe_creates_pending_task_and_stock_moves_in_one_step(client):
     )
     assert depot.status_code == 201, depot.text
     depot = depot.json()
-    unit = world["unit"]
-    rubric = client.patch(
-        f"/api/rubrics/{world['rubric']['id']}",
+    formula = client.post("/api/formulas", headers=headers, json={"name": "Contrapiso de cascote"})
+    assert formula.status_code == 201, formula.text
+    formula_id = formula.json()["id"]
+    margin = client.patch(f"/api/formulas/{formula_id}", headers=headers, json={"waste_percent": "10"})
+    assert margin.status_code == 200, margin.text
+    line = client.post(
+        f"/api/formulas/{formula_id}/lines",
         headers=headers,
-        json={"coverage_unit_id": world["m3"]},
+        json={"material_id": world["material"]["id"], "coefficient": "120"},
     )
-    assert rubric.status_code == 200, rubric.text
-    recipe = client.post(
-        f"/api/rubrics/{world['rubric']['id']}/recipe",
-        headers=headers,
-        json={"material_id": world["material"]["id"], "coefficient": "3"},
-    )
-    assert recipe.status_code == 201, recipe.text
+    assert line.status_code == 201, line.text
     task = client.post(
         f"/api/rubrics/{world['rubric']['id']}/tasks",
         headers=headers,
-        json={"work_id": world["work"]["id"], "quantity": "10", "pending_reason": "FALTAN_MATERIALES"},
+        json={
+            "work_id": world["work"]["id"],
+            "formula_id": formula_id,
+            "length_m": "3",
+            "width_m": "10",
+            "thickness_m": "0.30",
+        },
     )
     assert task.status_code == 201, task.text
     task = task.json()
-    assert task["pending_reason"] == "FALTAN_MATERIALES"
-    assert task["planned_qty"] == "10.0000"
+    assert task["status"] == "PENDIENTE"
+    assert task["planned_qty"] == "9.0000"
+    assert task["needs"][0]["needed"] == "1188.0000"
     counted = client.post(
         "/api/adjustments",
         headers={**headers, "Idempotency-Key": "ajuste-obra-b"},

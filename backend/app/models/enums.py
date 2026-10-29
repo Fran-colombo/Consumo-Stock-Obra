@@ -17,6 +17,7 @@ class WorkStatus(str, enum.Enum):
 class TaskStatus(str, enum.Enum):
     PENDIENTE = "PENDIENTE"
     EN_CURSO = "EN_CURSO"
+    TRABAJANDO = "TRABAJANDO"
     FINALIZADA = "FINALIZADA"
     CANCELADA = "CANCELADA"
 

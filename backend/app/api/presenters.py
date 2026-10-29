@@ -22,6 +22,8 @@ from app.models.entities import (
     Supplier,
     Task,
     TaskExecution,
+    TaskFormula,
+    TaskFormulaLine,
     TransferDiscrepancy,
     UnitOfMeasure,
     User,
@@ -113,7 +115,32 @@ def rubric_out(db: Session, rubric: Rubric) -> dict:
         "coverage_unit_id": rubric.coverage_unit_id,
         "coverage_unit_code": unit.code if unit else None,
         "coverage_unit_name": unit.name if unit else None,
+        "waste_percent": _qty(rubric.waste_percent),
         "recipe": [recipe_line_out(db, line) for line in lines],
+    }
+
+
+def formula_out(db: Session, formula: TaskFormula) -> dict:
+    lines = db.scalars(select(TaskFormulaLine).where(TaskFormulaLine.formula_id == formula.id).order_by(TaskFormulaLine.id)).all()
+    return {
+        "id": formula.id,
+        "name": formula.name,
+        "waste_percent": _qty(formula.waste_percent),
+        "is_active": formula.is_active,
+        "lines": [formula_line_out(db, line) for line in lines],
+    }
+
+
+def formula_line_out(db: Session, line: TaskFormulaLine) -> dict:
+    material = db.get(Material, line.material_id)
+    unit = db.get(UnitOfMeasure, material.unit_id) if material else None
+    return {
+        "id": line.id,
+        "material_id": line.material_id,
+        "material_name": material.name if material else None,
+        "unit_code": unit.code if unit else None,
+        "unit_name": unit.name if unit else None,
+        "coefficient": _qty(line.coefficient),
     }
 
 
@@ -137,6 +164,7 @@ def material_out(db: Session, material: Material) -> dict:
 def task_out(db: Session, task: Task) -> dict:
     unit = db.get(UnitOfMeasure, task.unit_id)
     rubric = db.get(Rubric, task.rubric_id)
+    work = db.get(Work, task.work_id)
     return {
         "id": task.id,
         "work_id": task.work_id,
@@ -148,14 +176,48 @@ def task_out(db: Session, task: Task) -> dict:
         "unit_code": unit.code if unit else None,
         "unit_name": unit.name if unit else None,
         "planned_qty": _qty(task.planned_qty),
+        "length_m": _qty(task.length_m),
+        "width_m": _qty(task.width_m),
+        "thickness_m": _qty(task.thickness_m),
         "executed_qty": _qty(executed_qty(db, task.id)),
         "execution_start": _iso(task.execution_start),
         "execution_end": _iso(task.execution_end),
         "status": task.status,
         "pending_reason": task.pending_reason,
-        "work_name": (work.name if (work := db.get(Work, task.work_id)) else None),
+        "formula_id": task.formula_id,
+        "formula_name": (formula.name if (formula := db.get(TaskFormula, task.formula_id)) else None) if task.formula_id else None,
+        "work_name": work.name if work else None,
         "notes": task.notes,
+        "needs": _task_needs(db, task, rubric),
     }
+
+
+def _task_needs(db: Session, task: Task, rubric: Rubric | None) -> list[dict]:
+    if task.formula_id is None or task.length_m is None or task.planned_qty is None:
+        return []
+    formula = db.get(TaskFormula, task.formula_id)
+    if formula is None:
+        return []
+    volume = Decimal(str(task.planned_qty))
+    waste = Decimal(str(formula.waste_percent or 0))
+    factor = Decimal("1") + (waste / Decimal("100"))
+    lines = db.scalars(select(TaskFormulaLine).where(TaskFormulaLine.formula_id == formula.id).order_by(TaskFormulaLine.id)).all()
+    needs = []
+    for line in lines:
+        material = db.get(Material, line.material_id)
+        unit = db.get(UnitOfMeasure, material.unit_id) if material else None
+        needed = as_qty(volume * Decimal(str(line.coefficient)) * factor)
+        needs.append(
+            {
+                "material_id": line.material_id,
+                "material_name": material.name if material else None,
+                "coefficient": _qty(line.coefficient),
+                "needed": _qty(needed),
+                "unit_code": unit.code if unit else None,
+                "unit_name": unit.name if unit else None,
+            }
+        )
+    return needs
 
 
 def _version_out(db: Session, version: ConsumptionRuleVersion | None) -> dict | None:

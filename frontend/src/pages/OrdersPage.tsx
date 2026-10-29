@@ -12,7 +12,8 @@ export function OrdersPage() {
   const [works, setWorks] = useState<Rec[]>([]);
   const [materials, setMaterials] = useState<Rec[]>([]);
   const [supplierName, setSupplierName] = useState("");
-  const [form, setForm] = useState({ supplier_id: "", work_id: "", material_id: "", quantity: "" });
+  const [form, setForm] = useState({ supplier_id: "", work_id: "" });
+  const [lines, setLines] = useState([{ material_id: "", quantity: "" }]);
 
   function load() {
     api<{ items: Rec[] }>("/api/purchase-orders?page_size=100").then((data) => setRows(data.items));
@@ -49,10 +50,10 @@ export function OrdersPage() {
           supplier_id: Number(form.supplier_id),
           work_id: Number(form.work_id),
           destination_location_id: work.location_id,
-          items: [{ material_id: Number(form.material_id), quantity: form.quantity }],
+          items: lines.map((line) => ({ material_id: Number(line.material_id), quantity: line.quantity })),
         }),
       });
-      setForm({ supplier_id: form.supplier_id, work_id: "", material_id: "", quantity: "" });
+      setLines([{ material_id: "", quantity: "" }]);
       load();
       notice.ok(`${order.number} quedó pendiente. El siguiente paso es encargarla.`);
     } catch (err) {
@@ -66,7 +67,7 @@ export function OrdersPage() {
       <div className="page-head">
         <div>
           <h1>Órdenes de compra</h1>
-          <p>Cada orden tiene un solo paso siguiente: encargar, marcar que llegó o marcar que se usó.</p>
+          <p>Una orden puede llevar varios materiales. El paso siguiente está en la tarjeta.</p>
         </div>
       </div>
       <form className="toolbar" onSubmit={addSupplier}>
@@ -86,14 +87,20 @@ export function OrdersPage() {
             {works.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
           </select>
         </div>
-        <div className="field"><label>Material</label>
-          <select required value={form.material_id} onChange={(event) => setForm({ ...form, material_id: event.target.value })}>
-            <option value="">Elegir</option>
-            {materials.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
-          </select>
-        </div>
-        <div className="field"><label>Cantidad</label><input required value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /></div>
-        <div className="span-2"><button className="action" type="submit">Cargar orden</button></div>
+        {lines.map((line, index) => (
+          <div className="span-2 form-grid" key={index}>
+            <div className="field"><label>Material</label>
+              <select required value={line.material_id} onChange={(event) => setLines(lines.map((row, rowIndex) => rowIndex === index ? { ...row, material_id: event.target.value } : row))}>
+                <option value="">Elegir</option>
+                {materials.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>Cantidad</label><input required value={line.quantity} onChange={(event) => setLines(lines.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: event.target.value } : row))} /></div>
+            {lines.length > 1 ? <button className="action ghost" type="button" onClick={() => setLines(lines.filter((_, rowIndex) => rowIndex !== index))}>Sacar</button> : null}
+          </div>
+        ))}
+        <div><button className="action secondary" type="button" onClick={() => setLines([...lines, { material_id: "", quantity: "" }])}>Agregar material</button></div>
+        <div><button className="action" type="submit">Cargar orden</button></div>
       </form>
       <div className="panel" style={{ marginTop: 14 }}>
         {rows.length === 0 ? <p className="hint">Todavía no hay órdenes.</p> : rows.map((order) => (
@@ -108,9 +115,10 @@ function OrderCard({ order, onDone, onOk, onFail }: { order: Rec; onDone: () => 
   const [quantity, setQuantity] = useState("");
   const [tasks, setTasks] = useState<Rec[]>([]);
   const [taskId, setTaskId] = useState("");
-  const item = order.items?.[0];
-  const pending = Number(item?.qty_pending || 0);
-  const received = Number(item?.qty_received || 0);
+  const items: Rec[] = order.items || [];
+  const pending = items.some((item) => Number(item.qty_pending || 0) > 0);
+  const received = items.some((item) => Number(item.qty_received || 0) > 0);
+  const single = items.length === 1;
 
   useEffect(() => {
     if (!order.work_id || (order.status !== "RECIBIDA" && order.status !== "PARCIAL")) return;
@@ -131,21 +139,26 @@ function OrderCard({ order, onDone, onOk, onFail }: { order: Rec; onDone: () => 
     <article className="order-card">
       <div>
         <strong>{order.number}</strong>
-        <p className="hint">{item?.material_name} · {formatQty(item?.qty_ordered)} {item?.unit_code} · {order.work_name} · {order.supplier_name}</p>
+        <ul>{items.map((item) => <li key={item.id}>{item.material_name} · pedido {formatQty(item.qty_ordered)} · llegó {formatQty(item.qty_received)} {item.unit_code}</li>)}</ul>
+        <p className="hint">{order.work_name} · {order.supplier_name}</p>
         <Badge value={order.status} />
       </div>
       <div>
         {order.status === "BORRADOR" ? (
           <button className="action" type="button" onClick={() => run(`/api/purchase-orders/${order.id}/confirm`, {}, `${order.number} quedó encargada.`)}>Encargar</button>
         ) : null}
-        {order.status === "CONFIRMADA" || (order.status === "PARCIAL" && pending > 0) ? (
+        {order.status === "CONFIRMADA" || (order.status === "PARCIAL" && pending) ? (
           <div className="field">
-            <label>Cuánto llegó</label>
-            <input placeholder={pending ? `Pendiente ${formatQty(pending)}` : ""} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
-            <button className="action" type="button" onClick={() => run(`/api/purchase-orders/${order.id}/arrive`, { quantity: quantity || null }, `${item?.material_name} llegó a ${order.work_name}.`)}>Llegó</button>
+            {single ? (
+              <>
+                <label>Cuánto llegó</label>
+                <input placeholder={`Pendiente ${formatQty(items[0]?.qty_pending)}`} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+              </>
+            ) : <p className="hint">Llega lo pedido de cada material.</p>}
+            <button className="action" type="button" onClick={() => run(`/api/purchase-orders/${order.id}/arrive`, { quantity: single ? quantity || null : null }, `Llegó el material de ${order.number}.`)}>Llegó</button>
           </div>
         ) : null}
-        {(order.status === "RECIBIDA" || (order.status === "PARCIAL" && received > 0)) ? (
+        {(order.status === "RECIBIDA" || (order.status === "PARCIAL" && received)) ? (
           <div className="field">
             <label>Tarea donde se usó</label>
             <select value={taskId} onChange={(event) => setTaskId(event.target.value)}>

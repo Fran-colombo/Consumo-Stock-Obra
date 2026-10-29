@@ -6,6 +6,7 @@ const LINKS = [
   ["/", "Inicio", "bi-grid"],
   ["/obras", "Obras", "bi-building"],
   ["/rubros", "Rubros y tareas", "bi-layers"],
+  ["/formulas", "Fórmulas para tareas", "bi-calculator"],
   ["/materiales", "Materiales", "bi-box-seam"],
   ["/inventario", "Inventario", "bi-boxes"],
   ["/consumos", "Consumos", "bi-clipboard-check"],

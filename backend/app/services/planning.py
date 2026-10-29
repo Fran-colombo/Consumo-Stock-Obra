@@ -14,6 +14,8 @@ from app.models.entities import (
     Rubric,
     RubricRecipeLine,
     Task,
+    TaskFormula,
+    TaskFormulaLine,
     TaskExecution,
     TheoreticalConsumptionLine,
     UnitOfMeasure,
@@ -210,6 +212,12 @@ def update_rubric(db: Session, rubric: Rubric, user: User, data: dict) -> Rubric
         else:
             get_or_404(db, UnitOfMeasure, data["coverage_unit_id"], "la unidad")
             rubric.coverage_unit_id = data["coverage_unit_id"]
+    if "waste_percent" in data and data["waste_percent"] is not None:
+        waste = as_qty(data["waste_percent"])
+        assert_non_negative(waste, "El margen")
+        if waste > Decimal("100"):
+            raise AppError(422, "El margen no puede pasar de 100 %.")
+        rubric.waste_percent = waste
     db.flush()
     return rubric
 
@@ -407,6 +415,9 @@ def update_task(db: Session, task: Task, user: User, data: dict) -> Task:
     if task.execution_start and task.execution_end and task.execution_start > task.execution_end:
         raise AppError(422, "El período de la tarea tiene la fecha inicial después de la final.")
     if "status" in data and data["status"] is not None:
+        allowed = {item.value for item in TaskStatus}
+        if data["status"] not in allowed:
+            raise AppError(422, "Ese estado de tarea no existe.")
         task.status = data["status"]
     if "notes" in data:
         task.notes = (data["notes"] or "").strip() or None
@@ -448,29 +459,107 @@ def save_recipe_line(db: Session, user: User, rubric: Rubric, material_id: int, 
     return row
 
 
-def create_task_from_recipe(db: Session, user: User, rubric: Rubric, work_id: int, quantity: Decimal, pending_reason: str) -> Task:
+def create_formula(db: Session, user: User, name: str) -> TaskFormula:
+    require_user(user)
+    cleaned = name.strip()
+    if not cleaned:
+        raise AppError(422, "El nombre de la fórmula es obligatorio.")
+    row = TaskFormula(name=cleaned, waste_percent=Decimal("0"), is_active=True, created_at=now_utc())
+    db.add(row)
+    db.flush()
+    audit(db, user, "CREAR_FORMULA", "task_formula", row.id, None, {"name": row.name})
+    return row
+
+
+def update_formula(db: Session, formula: TaskFormula, user: User, data: dict) -> TaskFormula:
+    require_user(user)
+    if "name" in data and data["name"] is not None:
+        cleaned = str(data["name"]).strip()
+        if not cleaned:
+            raise AppError(422, "El nombre de la fórmula es obligatorio.")
+        formula.name = cleaned
+    if "is_active" in data and data["is_active"] is not None:
+        formula.is_active = data["is_active"]
+    if "waste_percent" in data and data["waste_percent"] is not None:
+        waste = as_qty(data["waste_percent"])
+        assert_non_negative(waste, "El margen")
+        if waste > Decimal("100"):
+            raise AppError(422, "El margen no puede pasar de 100 %.")
+        formula.waste_percent = waste
+    db.flush()
+    return formula
+
+
+def save_formula_line(db: Session, user: User, formula: TaskFormula, material_id: int, coefficient: Decimal) -> TaskFormulaLine:
+    require_user(user)
+    ensure_active(formula, "La fórmula")
+    material = get_or_404(db, Material, material_id, "el material")
+    ensure_active(material, "El material")
+    coeff = as_qty(coefficient)
+    assert_positive(coeff, "El coeficiente")
+    unit = db.get(UnitOfMeasure, material.unit_id)
+    assert_precision(coeff, unit.decimal_places if unit else 4, "El coeficiente")
+    row = db.scalar(
+        select(TaskFormulaLine).where(TaskFormulaLine.formula_id == formula.id, TaskFormulaLine.material_id == material.id)
+    )
+    if row is None:
+        row = TaskFormulaLine(formula_id=formula.id, material_id=material.id, coefficient=coeff)
+        db.add(row)
+    else:
+        row.coefficient = coeff
+    db.flush()
+    audit(db, user, "GUARDAR_FORMULA", "task_formula", formula.id, None, {"material_id": material.id, "coefficient": str(coeff)})
+    return row
+
+
+def create_task_from_recipe(
+    db: Session,
+    user: User,
+    rubric: Rubric,
+    work_id: int,
+    length_m: Decimal,
+    width_m: Decimal,
+    thickness_m: Decimal,
+    formula_id: int,
+) -> Task:
     require_user(user)
     ensure_active(rubric, "El rubro")
-    if rubric.coverage_unit_id is None:
-        raise AppError(422, "Elegí en qué unidad se mide este rubro, por ejemplo metros cuadrados o cúbicos.")
-    lines = db.scalars(select(RubricRecipeLine).where(RubricRecipeLine.rubric_id == rubric.id).order_by(RubricRecipeLine.id)).all()
+    formula = get_or_404(db, TaskFormula, formula_id, "la fórmula")
+    ensure_active(formula, "La fórmula")
+    lines = db.scalars(select(TaskFormulaLine).where(TaskFormulaLine.formula_id == formula.id).order_by(TaskFormulaLine.id)).all()
     if not lines:
-        raise AppError(422, "Cargá primero qué materiales usa este rubro.")
+        raise AppError(422, "Esa fórmula no tiene materiales.")
+    length = as_qty(length_m)
+    width = as_qty(width_m)
+    thickness = as_qty(thickness_m)
+    assert_positive(length, "El largo")
+    assert_positive(width, "El ancho")
+    assert_positive(thickness, "El espesor")
+    volume = as_qty(length * width * thickness)
+    cubic = db.scalar(select(UnitOfMeasure).where(UnitOfMeasure.code == "m3"))
+    if cubic is None:
+        raise AppError(422, "Falta la unidad metro cúbico.")
     task = create_task(
         db,
         user,
         work_id,
         rubric.id,
-        rubric.name,
+        formula.name,
         None,
-        rubric.coverage_unit_id,
-        quantity,
+        cubic.id,
+        volume,
         None,
         None,
         TaskStatus.PENDIENTE.value,
         None,
-        pending_reason,
+        None,
     )
+    task.length_m = length
+    task.width_m = width
+    task.thickness_m = thickness
+    task.formula_id = formula.id
+    task.waste_percent = formula.waste_percent
+    db.flush()
     for line in lines:
         create_rule(db, user, task, line.material_id, Decimal(str(line.coefficient)), None, None, None)
     return task

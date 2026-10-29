@@ -3,6 +3,7 @@ import { useAuth } from "./auth/AuthContext";
 import { Layout } from "./components/Layout";
 import { ConsumptionsPage } from "./pages/ConsumptionsPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { FormulasPage } from "./pages/FormulasPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ManualPage } from "./pages/ManualPage";
@@ -33,6 +34,7 @@ export function App() {
         <Route path="/obras" element={<WorksPage />} />
         <Route path="/obras/:id" element={<WorkDetailPage />} />
         <Route path="/rubros" element={<RubricsPage />} />
+        <Route path="/formulas" element={<FormulasPage />} />
         <Route path="/materiales" element={<MaterialsPage />} />
         <Route path="/inventario" element={<InventoryPage />} />
         <Route path="/consumos" element={<ConsumptionsPage />} />

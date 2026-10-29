@@ -5,18 +5,50 @@ import { formatDate, formatQty, labelOf, MOVEMENT_LABELS, newKey } from "../lib/
 
 type Rec = Record<string, any>;
 
+function StockDetail({ title, rows, onBack }: { title: string; rows: Rec[]; onBack: () => void }) {
+  return (
+    <div className="panel table-wrap">
+      <div className="page-head">
+        <h2>{title}</h2>
+        <button className="action secondary" type="button" onClick={onBack}>Todas las obras</button>
+      </div>
+      {rows.length === 0 ? <Empty title="Sin stock en este lugar" text="Cuando llegue material o hagas un conteo, aparece acá." /> : (
+        <table>
+          <thead><tr><th>Material</th><th>Ubicación</th><th>Disponible</th><th>Pendiente</th><th>Sale en tránsito</th><th>Entra en tránsito</th><th>Último movimiento</th></tr></thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={`${row.material_id}-${row.location_id}`}>
+                <td>{row.material_code} {row.material_name}</td>
+                <td>{row.location_name}</td>
+                <td>{formatQty(row.on_hand)} {row.unit_code}</td>
+                <td>{formatQty(row.pending_receipt)}</td>
+                <td>{formatQty(row.in_transit_out)}</td>
+                <td>{formatQty(row.in_transit_in)}</td>
+                <td>{row.last_movement_type ? `${labelOf(row.last_movement_type, MOVEMENT_LABELS)} · ${formatDate(row.last_movement_at)}` : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 export function InventoryPage() {
   const [rows, setRows] = useState<Rec[]>([]);
+  const [works, setWorks] = useState<Rec[]>([]);
   const [movements, setMovements] = useState<Rec[]>([]);
   const [materials, setMaterials] = useState<Rec[]>([]);
   const [locations, setLocations] = useState<Rec[]>([]);
   const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<{ title: string; workId?: number; locationId?: number } | null>(null);
   const notice = useNotice();
   const [adjustments, setAdjustments] = useState<Rec[]>([]);
   const [form, setForm] = useState({ material_id: "", location_id: "", counted_qty: "", reason: "" });
 
   function load() {
     api<Rec[]>(`/api/stock${q ? `?q=${encodeURIComponent(q)}` : ""}`).then(setRows);
+    api<{ items: Rec[] }>("/api/works?page_size=100").then((data) => setWorks(data.items));
     api<{ items: Rec[] }>("/api/movements?page_size=30").then((data) => setMovements(data.items));
     api<{ items: Rec[] }>("/api/materials?page_size=100").then((data) => setMaterials(data.items));
     api<Rec[]>("/api/locations").then(setLocations);
@@ -49,29 +81,43 @@ export function InventoryPage() {
 
   return (
     <section>
-      <div className="page-head"><div><h1>Inventario</h1><p>El disponible es el stock físico. Lo pendiente de compra y lo en tránsito se muestran aparte y no se suman.</p></div></div>
+      <div className="page-head"><div><h1>Inventario</h1><p>Elegí una obra para ver el stock. El disponible es lo que hay ahí. Lo pendiente de compra y lo en tránsito no se suman.</p></div></div>
       {notice.dialog}
       <div className="toolbar"><input className="search" aria-label="Buscar stock" placeholder="Buscar material o ubicación" value={q} onChange={(event) => setQ(event.target.value)} /></div>
-      <div className="panel table-wrap">
-        {rows.length === 0 ? <Empty title="No hay existencias" text="Registrá una recepción o un ajuste de conteo para ver el stock por ubicación." /> : (
-          <table>
-            <thead><tr><th>Material</th><th>Ubicación</th><th>Disponible</th><th>Pendiente</th><th>Sale en tránsito</th><th>Entra en tránsito</th><th>Último movimiento</th></tr></thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={`${row.material_id}-${row.location_id}`}>
-                  <td>{row.material_code} {row.material_name}</td>
-                  <td>{row.location_name}</td>
-                  <td>{formatQty(row.on_hand)} {row.unit_code}</td>
-                  <td>{formatQty(row.pending_receipt)}</td>
-                  <td>{formatQty(row.in_transit_out)}</td>
-                  <td>{formatQty(row.in_transit_in)}</td>
-                  <td>{row.last_movement_type ? `${labelOf(row.last_movement_type, MOVEMENT_LABELS)} · ${formatDate(row.last_movement_at)}` : "—"}</td>
-                </tr>
+      {selected ? (
+        <StockDetail
+          title={selected.title}
+          rows={rows.filter((row) => selected.workId ? row.work_id === selected.workId : row.location_id === selected.locationId)}
+          onBack={() => setSelected(null)}
+        />
+      ) : (
+        <div className="panel">
+          <h2>Obras</h2>
+          {works.length === 0 ? <Empty title="No hay obras" text="Cargá una obra para ver su inventario." /> : (
+            <div className="choice">
+              {works.map((work) => (
+                <button key={work.id} type="button" onClick={() => setSelected({ title: work.name, workId: work.id })}>
+                  <strong>{work.name}</strong>
+                  <div className="hint">{rows.filter((row) => row.work_id === work.id).length} materiales</div>
+                </button>
               ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+            </div>
+          )}
+          {locations.some((row) => !row.work_id) ? (
+            <>
+              <h2>Depósitos</h2>
+              <div className="choice">
+                {locations.filter((row) => !row.work_id).map((place) => (
+                  <button key={place.id} type="button" onClick={() => setSelected({ title: place.name, locationId: place.id })}>
+                    <strong>{place.name}</strong>
+                    <div className="hint">{rows.filter((row) => row.location_id === place.id).length} materiales</div>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+        </div>
+      )}
       <form className="panel form-grid" onSubmit={adjust} style={{ marginTop: 14 }}>
         <h2 className="span-2">Conteo físico</h2>
         <div className="field"><label>Material</label>

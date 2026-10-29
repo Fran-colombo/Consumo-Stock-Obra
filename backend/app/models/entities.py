@@ -94,6 +94,7 @@ class Rubric(Base):
     code: Mapped[str] = mapped_column(String(40), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     coverage_unit_id: Mapped[int | None] = mapped_column(ForeignKey("units_of_measure.id"), nullable=True)
+    waste_percent: Mapped[Decimal] = mapped_column(QTY, default=Decimal("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -110,10 +111,15 @@ class Task(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     unit_id: Mapped[int] = mapped_column(ForeignKey("units_of_measure.id", ondelete="RESTRICT"))
     planned_qty: Mapped[Decimal | None] = mapped_column(QTY, nullable=True)
+    length_m: Mapped[Decimal | None] = mapped_column(QTY, nullable=True)
+    width_m: Mapped[Decimal | None] = mapped_column(QTY, nullable=True)
+    thickness_m: Mapped[Decimal | None] = mapped_column(QTY, nullable=True)
     execution_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     execution_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="PENDIENTE", index=True)
     pending_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    formula_id: Mapped[int | None] = mapped_column(ForeignKey("task_formulas.id"), nullable=True)
+    waste_percent: Mapped[Decimal] = mapped_column(QTY, default=Decimal("0"))
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -172,6 +178,29 @@ class RubricRecipeLine(Base):
     coefficient: Mapped[Decimal] = mapped_column(QTY)
 
     rubric: Mapped[Rubric] = relationship()
+    material: Mapped[Material] = relationship()
+
+
+class TaskFormula(Base):
+    __tablename__ = "task_formulas"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), index=True)
+    waste_percent: Mapped[Decimal] = mapped_column(QTY, default=Decimal("0"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class TaskFormulaLine(Base):
+    __tablename__ = "task_formula_lines"
+    __table_args__ = (UniqueConstraint("formula_id", "material_id", name="uq_formula_material"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    formula_id: Mapped[int] = mapped_column(ForeignKey("task_formulas.id", ondelete="RESTRICT"), index=True)
+    material_id: Mapped[int] = mapped_column(ForeignKey("materials.id", ondelete="RESTRICT"), index=True)
+    coefficient: Mapped[Decimal] = mapped_column(QTY)
+
+    formula: Mapped[TaskFormula] = relationship()
     material: Mapped[Material] = relationship()
 
 

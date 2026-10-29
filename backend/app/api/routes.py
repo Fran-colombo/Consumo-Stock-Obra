@@ -8,6 +8,7 @@ from app.api.presenters import (
     consumption_out,
     conversion_out,
     execution_out,
+    formula_out,
     location_out,
     material_out,
     movement_out,
@@ -46,6 +47,7 @@ from app.models.entities import (
     Supplier,
     Task,
     TaskExecution,
+    TaskFormula,
     TransferDiscrepancy,
     UnitOfMeasure,
     User,
@@ -75,6 +77,9 @@ from app.schemas import (
     ReasonIn,
     RecipeLineIn,
     ReceiptCorrectionIn,
+    FormulaIn,
+    FormulaLineIn,
+    FormulaUpdate,
     ReceiptIn,
     ReceiptItemEdit,
     ReceiveTransferIn,
@@ -116,10 +121,13 @@ from app.services.planning import (
     create_location,
     create_material,
     create_conversion,
+    create_formula,
     create_rubric,
     create_rule,
     create_task_from_recipe,
+    save_formula_line,
     save_recipe_line,
+    update_formula,
     create_task,
     create_unit,
     create_work,
@@ -373,8 +381,32 @@ def post_recipe(rubric_id: int, body: RecipeLineIn, db: Session = Depends(get_db
 @router.post("/rubrics/{rubric_id}/tasks", status_code=201)
 def post_rubric_task(rubric_id: int, body: RubricTaskIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     rubric = get_or_404(db, Rubric, rubric_id, "el rubro")
-    task = create_task_from_recipe(db, user, rubric, body.work_id, body.quantity, body.pending_reason)
+    task = create_task_from_recipe(db, user, rubric, body.work_id, body.length_m, body.width_m, body.thickness_m, body.formula_id)
     return task_out(db, task)
+
+
+@router.get("/formulas")
+def list_formulas(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    rows = db.scalars(select(TaskFormula).order_by(TaskFormula.name)).all()
+    return [formula_out(db, row) for row in rows]
+
+
+@router.post("/formulas", status_code=201)
+def post_formula(body: FormulaIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return formula_out(db, create_formula(db, user, body.name))
+
+
+@router.patch("/formulas/{formula_id}")
+def patch_formula(formula_id: int, body: FormulaUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    formula = get_or_404(db, TaskFormula, formula_id, "la fórmula")
+    return formula_out(db, update_formula(db, formula, user, body.model_dump(exclude_unset=True)))
+
+
+@router.post("/formulas/{formula_id}/lines", status_code=201)
+def post_formula_line(formula_id: int, body: FormulaLineIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    formula = get_or_404(db, TaskFormula, formula_id, "la fórmula")
+    save_formula_line(db, user, formula, body.material_id, body.coefficient)
+    return formula_out(db, formula)
 
 
 @router.get("/materials")
@@ -528,7 +560,27 @@ def post_execution(
     if replay:
         return JSONResponse(status_code=replay["status"], content=replay["body"])
     execution = record_execution(db, user, task, body.quantity_delta, body.new_total, body.execution_date, body.notes, body.corrects_execution_id)
+    if body.consume_materials:
+        _consume_execution(db, user, task, execution)
     return _finish(db, user, idempotency_key or "", 201, execution_out(db, execution))
+
+
+def _consume_execution(db: Session, user: User, task: Task, execution: TaskExecution) -> None:
+    from decimal import Decimal
+
+    from app.services.common import as_qty
+    from app.services.consumption import register_consumption
+
+    if Decimal(str(execution.quantity_delta)) <= 0:
+        return
+    location = db.scalar(select(Location).where(Location.work_id == task.work_id).order_by(Location.id.asc()))
+    if location is None:
+        raise AppError(422, "La obra no tiene un lugar de stock.")
+    for line in execution.lines:
+        qty = as_qty(line.output_qty)
+        if qty <= 0:
+            continue
+        register_consumption(db, user, task.work_id, task.id, location.id, line.material_id, qty, None, "Uso de la tarea")
 
 
 @router.patch("/executions/{execution_id}")

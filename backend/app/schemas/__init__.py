@@ -109,6 +109,7 @@ class RubricUpdate(BaseModel):
     description: str | None = None
     is_active: bool | None = None
     coverage_unit_id: int | None = None
+    waste_percent: Decimal | None = None
 
 
 class RecipeLineIn(BaseModel):
@@ -118,8 +119,25 @@ class RecipeLineIn(BaseModel):
 
 class RubricTaskIn(BaseModel):
     work_id: int
-    quantity: Decimal
-    pending_reason: str
+    formula_id: int
+    length_m: Decimal
+    width_m: Decimal
+    thickness_m: Decimal
+
+
+class FormulaIn(BaseModel):
+    name: str
+
+
+class FormulaUpdate(BaseModel):
+    name: str | None = None
+    waste_percent: Decimal | None = None
+    is_active: bool | None = None
+
+
+class FormulaLineIn(BaseModel):
+    material_id: int
+    coefficient: Decimal
 
 
 class MaterialIn(BaseModel):
@@ -183,6 +201,7 @@ class ExecutionIn(BaseModel):
     execution_date: date | None = None
     notes: str | None = None
     corrects_execution_id: int | None = None
+    consume_materials: bool = False
 
 
 class ExecutionEdit(BaseModel):

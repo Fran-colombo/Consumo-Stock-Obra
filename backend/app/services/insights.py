@@ -94,6 +94,7 @@ def stock_rows(db: Session, material_id: int | None = None, location_id: int | N
         if needle and needle not in material.name.lower() and needle not in material.code.lower() and needle not in location.name.lower():
             continue
         last = last_map.get((mat_id, loc_id))
+        place = db.get(Work, location.work_id) if location.work_id else None
         rows.append(
             {
                 "material_id": mat_id,
@@ -103,6 +104,8 @@ def stock_rows(db: Session, material_id: int | None = None, location_id: int | N
                 "location_id": loc_id,
                 "location_name": location.name,
                 "location_code": location.code,
+                "work_id": location.work_id,
+                "work_name": place.name if place else None,
                 "on_hand": as_qty(balance_map.get((mat_id, loc_id), Decimal("0"))),
                 "pending_receipt": as_qty(pending_map.get((mat_id, loc_id), Decimal("0"))),
                 "in_transit_out": as_qty(transit_out.get((mat_id, loc_id), Decimal("0"))),

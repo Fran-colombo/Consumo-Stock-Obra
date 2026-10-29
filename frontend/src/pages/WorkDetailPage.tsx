@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
-import { AdminFix, Badge, Empty, useNotice } from "../components/ui";
+import { AdminFix, Badge, Empty, Modal, useNotice } from "../components/ui";
+import { TaskMeasures } from "./RubricsPage";
 import { formatDate, formatPercent, formatQty, labelOf, MOVEMENT_LABELS, newKey } from "../lib/format";
 
 type Rec = Record<string, any>;
@@ -44,7 +45,7 @@ export function WorkDetailPage() {
       </div>
       {tab === "Resumen" ? <Summary rows={comparison} /> : null}
       {tab === "Rubros y tareas" ? (
-        <TasksPanel tasks={tasks} onChange={load} onError={notice.fail} />
+        <TasksPanel workId={id || ""} tasks={tasks} onChange={load} onError={notice.fail} onOk={notice.ok} />
       ) : null}
       {tab === "Consumo teórico" ? <Theoretical tasks={tasks} /> : null}
       {tab === "Consumo real" ? <Real work={work} tasks={tasks} materials={materials} onChange={load} onError={notice.fail} /> : null}
@@ -85,28 +86,124 @@ function Summary({ rows }: { rows: Rec[] }) {
   );
 }
 
-function TasksPanel({ tasks, onChange, onError }: { tasks: Rec[]; onChange: () => void; onError: (value: string) => void }) {
+function TasksPanel({ workId, tasks, onChange, onError, onOk }: { workId: string; tasks: Rec[]; onChange: () => void; onError: (value: string) => void; onOk: (value: string) => void }) {
+  const [rubrics, setRubrics] = useState<Rec[]>([]);
+  const [formulas, setFormulas] = useState<Rec[]>([]);
+  const [rubricId, setRubricId] = useState("");
+  const [formulaId, setFormulaId] = useState("");
+  const [job, setJob] = useState({ work_id: workId, length_m: "", width_m: "", thickness_m: "" });
+  useEffect(() => {
+    api<Rec[]>("/api/rubrics").then((data) => setRubrics(data.filter((row) => row.is_active)));
+    api<Rec[]>("/api/formulas").then((data) => setFormulas(data.filter((row) => row.is_active)));
+  }, [tasks]);
+  const formula = formulas.find((row) => String(row.id) === formulaId);
+  const volume = Number(job.length_m) * Number(job.width_m) * Number(job.thickness_m);
+  const shownVolume = Number.isFinite(volume) && volume > 0 ? volume : null;
+
+  async function addTask(event: FormEvent) {
+    event.preventDefault();
+    if (!rubricId || !formula) {
+      onError("Elegí el rubro y la fórmula.");
+      return;
+    }
+    try {
+      const task = await api<Rec>(`/api/rubrics/${rubricId}/tasks`, {
+        method: "POST",
+        body: JSON.stringify({ work_id: Number(workId), formula_id: Number(formulaId), length_m: job.length_m, width_m: job.width_m, thickness_m: job.thickness_m }),
+      });
+      setJob({ work_id: workId, length_m: "", width_m: "", thickness_m: "" });
+      const needs = (task.needs || []).map((item: Rec) => `${formatQty(item.needed)} ${item.unit_name} de ${item.material_name}`);
+      onOk(needs.length ? `Quedó pendiente. Son ${formatQty(task.planned_qty)} m³. Hace falta ${needs.join(", ")}.` : "La tarea quedó pendiente.");
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : "No se pudo crear la tarea.");
+    }
+  }
+
   return (
     <div className="grid">
-      <p className="hint">La receta y las tareas nuevas se cargan en Rubros y tareas. Acá se ve lo que esta obra tiene que cubrir y se anota el avance.</p>
-      {tasks.length === 0 ? <div className="panel"><Empty title="Esta obra no tiene tareas" text="Elegí el rubro, cargá la receta una vez y creá la tarea desde Rubros y tareas." /></div> : tasks.map((task) => (
-        <TaskCard key={task.id} task={task} onChange={onChange} onError={onError} />
+      <div className="panel">
+        <h2>Nueva tarea</h2>
+        <div className="field">
+          <label>Rubro</label>
+          <select required value={rubricId} onChange={(event) => setRubricId(event.target.value)}>
+            <option value="">Elegir</option>
+            {rubrics.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>Fórmula</label>
+          <select required value={formulaId} onChange={(event) => setFormulaId(event.target.value)}>
+            <option value="">Elegir</option>
+            {formulas.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+          </select>
+        </div>
+        {formula ? (
+          <TaskMeasures
+            job={job}
+            setJob={setJob}
+            onSubmit={addTask}
+            volume={shownVolume}
+            recipe={formula.lines || []}
+            waste={formula.waste_percent}
+            hideWork
+          />
+        ) : <p className="hint">Elegí la fórmula. Si no está, cargala en Fórmulas para tareas.</p>}
+      </div>
+      {tasks.length === 0 ? <div className="panel"><Empty title="Esta obra no tiene tareas" text="Elegí el rubro y las tres medidas." /></div> : tasks.map((task) => (
+        <TaskCard key={task.id} task={task} onChange={onChange} onError={onError} onOk={onOk} />
       ))}
     </div>
   );
 }
 
-function TaskCard({ task, onChange, onError }: { task: Rec; onChange: () => void; onError: (value: string) => void }) {
+const TASK_STATES = [
+  ["EN_CURSO", "En proceso"],
+  ["TRABAJANDO", "Trabajando"],
+  ["FINALIZADA", "Completado"],
+] as const;
+
+function taskStatusLabel(status: string) {
+  return TASK_STATES.find(([value]) => value === status)?.[1] || (status === "PENDIENTE" ? "Pendiente" : labelOf(status));
+}
+
+function TaskCard({ task, onChange, onError, onOk }: { task: Rec; onChange: () => void; onError: (value: string) => void; onOk: (value: string) => void }) {
   const [rules, setRules] = useState<Rec[]>([]);
   const [executions, setExecutions] = useState<Rec[]>([]);
   const [advance, setAdvance] = useState({ quantity_delta: "", new_total: "", execution_date: "" });
+  const [pendingUse, setPendingUse] = useState<Rec[] | null>(null);
   useEffect(() => {
     api<Rec[]>(`/api/tasks/${task.id}/rules`).then(setRules);
     api<Rec[]>(`/api/tasks/${task.id}/executions`).then(setExecutions);
   }, [task.id, task.executed_qty]);
 
-  async function addAdvance(event: FormEvent) {
-    event.preventDefault();
+  function advanceQty() {
+    if (advance.quantity_delta) return Number(advance.quantity_delta);
+    if (advance.new_total) return Number(advance.new_total) - Number(task.executed_qty || 0);
+    return Number.NaN;
+  }
+
+  function usageFor(qty: number) {
+    if (!(qty > 0)) return [];
+    if (task.needs?.length) {
+      return task.needs.map((item: Rec) => ({ material_name: item.material_name, quantity: qty * Number(item.coefficient), unit_name: item.unit_name }));
+    }
+    return rules
+      .filter((item) => Number(item.current?.coefficient) > 0)
+      .map((item) => ({ material_name: item.material_name, quantity: qty * Number(item.current.coefficient), unit_name: item.unit_code }));
+  }
+
+  async function setStatus(status: string, label: string) {
+    try {
+      await api(`/api/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      onOk(`La tarea quedó ${label.toLowerCase()}.`);
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : "No se pudo cambiar el estado.");
+    }
+  }
+
+  async function saveAdvance(consume: boolean) {
     try {
       await api(`/api/tasks/${task.id}/executions`, {
         method: "POST",
@@ -115,29 +212,59 @@ function TaskCard({ task, onChange, onError }: { task: Rec; onChange: () => void
           quantity_delta: advance.quantity_delta || null,
           new_total: advance.new_total || null,
           execution_date: advance.execution_date || null,
+          consume_materials: consume,
         }),
       });
       setAdvance({ quantity_delta: "", new_total: "", execution_date: "" });
+      setPendingUse(null);
+      onOk(consume ? "Quedó el avance y se descontaron los materiales del stock de la obra." : "Quedó el avance.");
       onChange();
     } catch (err) {
+      setPendingUse(null);
       onError(err instanceof ApiError ? err.message : "No se pudo registrar el avance.");
     }
+  }
+
+  function addAdvance(event: FormEvent) {
+    event.preventDefault();
+    const lines = usageFor(advanceQty());
+    if (lines.length) {
+      setPendingUse(lines);
+      return;
+    }
+    saveAdvance(false);
   }
   return (
     <article className="panel">
       <div className="page-head">
         <div>
           <h2>{task.name}</h2>
-          <p>{task.rubric_name} · Planificado {formatQty(task.planned_qty)} {task.unit_code} · Ejecutado {formatQty(task.executed_qty)} {task.unit_code}</p>
+          <p>{task.rubric_name} · {task.length_m ? `${formatQty(task.length_m)} × ${formatQty(task.width_m)} × ${formatQty(task.thickness_m)} m = ${formatQty(task.planned_qty)} m³` : `Planificado ${formatQty(task.planned_qty)} ${task.unit_code}`} · Ejecutado {formatQty(task.executed_qty)} {task.unit_code}</p>
         </div>
-        <Badge value={task.status} />
+        <span className={`badge ${task.status === "FINALIZADA" ? "ok" : task.status === "PENDIENTE" ? "warn" : "info"}`}>{taskStatusLabel(task.status)}</span>
+      </div>
+      <div className="toolbar">
+        {TASK_STATES.map(([value, label]) => (
+          <button key={value} className={task.status === value ? "action" : "action secondary"} type="button" onClick={() => setStatus(value, label)}>{label}</button>
+        ))}
       </div>
       <h3>Va a hacer falta</h3>
-      {rules.length === 0 ? <p className="hint">Esta tarea no tiene receta.</p> : (
+      {(task.needs || []).length > 0 ? (
+        <ul>{task.needs.map((item: Rec) => <li key={item.material_id}>{formatQty(item.needed)} {item.unit_name} de {item.material_name}</li>)}</ul>
+      ) : rules.length === 0 ? <p className="hint">Esta tarea no tiene fórmula.</p> : (
         <ul>{rules.map((item) => <li key={item.id}>{formatQty(Number(task.planned_qty || 0) * Number(item.current?.coefficient || 0))} {item.unit_code} de {item.material_name}</li>)}</ul>
       )}
+      {pendingUse ? (
+        <Modal title="Se van a utilizar los siguientes materiales" onClose={() => setPendingUse(null)}>
+          <ul>{pendingUse.map((item) => <li key={item.material_name}>{formatQty(item.quantity)} {item.unit_name} de {item.material_name}</li>)}</ul>
+          <div className="toolbar">
+            <button className="action" type="button" onClick={() => saveAdvance(true)}>Usar estos materiales</button>
+            <button className="action secondary" type="button" onClick={() => setPendingUse(null)}>Volver</button>
+          </div>
+        </Modal>
+      ) : null}
       <h3>Registrar avance</h3>
-      <p className="hint">Si completás el nuevo total, el sistema registra solo la diferencia respecto de lo ya ejecutado.</p>
+      <p className="hint">Si completás el nuevo total, el sistema registra solo la diferencia respecto de lo ya ejecutado. Si la tarea tiene materiales, se descuentan del stock de la obra.</p>
       <form className="form-grid" onSubmit={addAdvance}>
         <div className="field"><label>Cantidad de este avance</label><input value={advance.quantity_delta} onChange={(event) => setAdvance({ ...advance, quantity_delta: event.target.value, new_total: "" })} /></div>
         <div className="field"><label>O nuevo total acumulado</label><input value={advance.new_total} onChange={(event) => setAdvance({ ...advance, new_total: event.target.value, quantity_delta: "" })} /></div>

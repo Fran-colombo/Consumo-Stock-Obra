@@ -11,17 +11,17 @@ export function ManualPage() {
         <h2>Cómo se empieza</h2>
         <ol>
           <li>En Materiales, cargá lo que se usa. “Avisar cuando quede menos de” no es lo que hay: es el mínimo. Si el disponible baja de ese número, Inicio lo marca. Lo que hay se ve en Inventario.</li>
-          <li>En Rubros y tareas, creá el rubro y elegí en qué se mide, por ejemplo metros cuadrados. Cargá una vez qué usa: 2 baldes de arena, 3 de cemento y 1 de agua por cada unidad. Esos números los escribís vos.</li>
-          <li>En el mismo rubro, creá la tarea: obra, cuánto hay que cubrir y por qué queda pendiente. Puede faltar material, haber otras prioridades, o haber que hacer algo antes. El sistema calcula lo que hace falta y no pide la receta otra vez.</li>
+          <li>En Fórmulas para tareas, cargá la mezcla que querés usar. Por ejemplo, 120 kg de cemento y 0,5 m³ de arena por cada metro cúbico. Esos números los escribís vos. El margen es opcional: si ponés 10, el cálculo suma un 10 %. Si lo dejás vacío, no suma nada.</li>
+          <li>La tarea se crea en Rubros y tareas o en la obra. Elegís la fórmula, y pedís largo, ancho y espesor, los tres en metros. 3 × 10 × 0,30 son 9 m³. Cada material sale de la fórmula que elegiste. Queda pendiente, sin un motivo aparte.</li>
         </ol>
-        <p>Crear la tarea no mueve stock. El stock cambia cuando el material llega o cuando se marca que se usó.</p>
+        <p>Crear la tarea no mueve stock. Al registrar un avance, si la tarea tiene materiales, aparece un aviso con lo que se va a usar y, al confirmar, eso sale del stock de la obra. También podés pasar la tarea a en proceso, trabajando o completado.</p>
 
         <h2>Comprar</h2>
-        <p>En Órdenes de compra cargás proveedor, obra, material y cantidad. La orden queda pendiente. En la misma tarjeta está el único paso que sigue:</p>
+        <p>En Órdenes de compra cargás proveedor, obra y una o varias líneas de material y cantidad. La orden queda pendiente. En la misma tarjeta está el paso que sigue, y vale para todos los materiales:</p>
         <ul>
           <li><strong>Encargar.</strong> Ya se pidió. Todavía no hay stock.</li>
-          <li><strong>Llegó.</strong> Entra al stock de la obra. Si anotás una cantidad menor, llega solo esa parte.</li>
-          <li><strong>Se usaron.</strong> Elegís la tarea y esa cantidad sale del stock. Si no alcanza, el aviso lo dice y no descuenta.</li>
+          <li><strong>Llegó.</strong> Entra al stock de la obra. Si la orden tiene un solo material, podés anotar cuánto llegó. Si tiene varios, llega lo pedido de cada uno.</li>
+          <li><strong>Se usaron.</strong> Elegís la tarea y sale del stock lo que llegó de cada material. Si no alcanza, el aviso lo dice y no descuenta.</li>
         </ul>
 
         <h2>Transferir stock</h2>
