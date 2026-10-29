@@ -12,6 +12,7 @@ const LINKS = [
   ["/ordenes", "Órdenes de compra", "bi-cart"],
   ["/transferencias", "Transferencias", "bi-arrow-left-right"],
   ["/reportes", "Reportes", "bi-bar-chart"],
+  ["/manual", "Manual", "bi-book"],
   ["/configuracion", "Configuración", "bi-sliders"],
 ];
 
@@ -22,10 +23,9 @@ export function Layout() {
     <div className="app-shell">
       <aside className={open ? "sidebar open" : "sidebar"}>
         <div className="brand">
-          <div className="brand-mark" aria-hidden="true" />
+          <img className="brand-mark" src="/favicon.svg" alt="" width={34} height={34} />
           <div>
-            <strong>Conkreto</strong>
-            <span>Materiales y consumo</span>
+            <strong>Consumo Stock en Obra</strong>
           </div>
         </div>
         <nav>
@@ -49,7 +49,7 @@ export function Layout() {
           <button className="btn secondary menu-btn" type="button" onClick={() => setOpen((value) => !value)}>
             Menú
           </button>
-          <strong>Conkreto</strong>
+          <strong>Consumo Stock en Obra</strong>
         </div>
         <Outlet />
       </main>

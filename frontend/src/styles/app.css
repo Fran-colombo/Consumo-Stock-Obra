@@ -29,7 +29,7 @@ a { color: var(--accent); }
 
 .app-shell { display: flex; min-height: 100vh; }
 .sidebar {
-  width: 248px;
+  width: 272px;
   background: var(--sidebar);
   color: var(--sidebar-ink);
   padding: 22px 14px;
@@ -41,14 +41,23 @@ a { color: var(--accent); }
   height: 100vh;
 }
 .brand { display: flex; gap: 12px; align-items: center; padding: 0 8px 8px; }
-.brand-mark {
-  width: 34px; height: 34px; border-radius: 8px;
-  background: linear-gradient(145deg, #d6d3d1, #0f4c5c 55%, #9a3412);
-  transform: rotate(8deg);
+.brand-mark { width: 34px; height: 34px; border-radius: 8px; display: block; flex: none; }
+.brand strong { display: block; font-size: 0.95rem; line-height: 1.2; }
+.password-row { position: relative; }
+.password-row input { width: 100%; padding-right: 44px; }
+.eye-btn {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 36px; height: 36px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--muted); cursor: pointer;
+  display: grid; place-items: center;
 }
-.brand strong { display: block; font-size: 1.05rem; }
-.brand span { color: var(--muted); font-size: 0.78rem; }
-.sidebar .brand span { color: #d5ddd8; }
+.eye-btn:hover { color: var(--ink); background: #f3f0ea; }
+.eye-btn i { font-size: 1.15rem; line-height: 1; }
+.manual { max-width: 760px; }
+.manual h2 { margin: 28px 0 8px; font-size: 1.25rem; }
+.manual h3 { margin: 18px 0 6px; font-size: 1.02rem; }
+.manual p, .manual li { line-height: 1.5; }
+.manual .toc a { display: block; margin: 4px 0; }
 .nav-link {
   display: flex; align-items: center; gap: 10px;
   color: var(--sidebar-ink); text-decoration: none;
@@ -90,9 +99,7 @@ a { color: var(--accent); }
   color: var(--ink);
 }
 .field textarea { min-height: 80px; }
-.password-row { display: flex; gap: 8px; align-items: stretch; }
-.password-row input { flex: 1; min-width: 0; }
-.password-row .btn { white-space: nowrap; }
+.field .password-row input { padding-right: 44px; }
 .field .error { color: var(--danger); font-size: 0.85rem; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .span-2 { grid-column: span 2; }

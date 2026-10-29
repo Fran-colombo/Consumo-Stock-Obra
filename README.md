@@ -1,4 +1,4 @@
-# Conkreto
+# Consumo Stock en Obra
 
 Aplicación interna para controlar materiales de obra: stock por ubicación, compras, transferencias y la comparación entre consumo teórico y real.
 

@@ -5,6 +5,7 @@ import { ConsumptionsPage } from "./pages/ConsumptionsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ManualPage } from "./pages/ManualPage";
 import { MaterialsPage } from "./pages/MaterialsPage";
 import { OrderDetailPage } from "./pages/OrderDetailPage";
 import { OrdersPage } from "./pages/OrdersPage";
@@ -40,6 +41,7 @@ export function App() {
         <Route path="/transferencias" element={<TransfersPage />} />
         <Route path="/transferencias/:id" element={<TransferDetailPage />} />
         <Route path="/reportes" element={<ReportsPage />} />
+        <Route path="/manual" element={<ManualPage />} />
         <Route path="/configuracion" element={<SettingsPage />} />
       </Route>
     </Routes>

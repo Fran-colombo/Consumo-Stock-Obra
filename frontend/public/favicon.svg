@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Consumo Stock en Obra">
+  <rect width="32" height="32" rx="8" fill="#1c2824"/>
+  <path d="M8 13.2 16 9.4l8 3.8-8 3.8z" fill="#f4efe6"/>
+  <path d="M8 13.2 16 17v4.2L8 17.4z" fill="#c9bba8"/>
+  <path d="M24 13.2 16 17v4.2l8-3.8z" fill="#a89884"/>
+  <path d="M8 20.2 16 16.4l8 3.8-8 3.8z" fill="#b7ddd4"/>
+  <path d="M8 20.2 16 24v4.1L8 24.3z" fill="#0f4c5c"/>
+  <path d="M24 20.2 16 24v4.1l8-3.8z" fill="#146276"/>
+</svg>

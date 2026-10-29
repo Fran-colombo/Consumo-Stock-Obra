@@ -63,7 +63,7 @@ export function MaterialsPage() {
         <input className="search" aria-label="Buscar material" placeholder="Buscar" value={q} onChange={(event) => setQ(event.target.value)} />
       </div>
       <div className="panel table-wrap">
-        {rows.length === 0 ? <Empty title="El catálogo está vacío" text="Cargá los materiales reales de Conkreto. No hay coeficientes precargados." /> : (
+        {rows.length === 0 ? <Empty title="El catálogo está vacío" text="Cargá los materiales que se usan en obra. No hay coeficientes precargados." /> : (
           <table>
             <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Unidad</th><th>Umbral</th><th>Estado</th></tr></thead>
             <tbody>

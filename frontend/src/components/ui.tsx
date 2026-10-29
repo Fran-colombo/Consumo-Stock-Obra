@@ -158,3 +158,40 @@ export function AdminFix({
     </div>
   );
 }
+
+export function PasswordField({
+  id,
+  value,
+  onChange,
+  autoComplete,
+  required,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete?: string;
+  required?: boolean;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="password-row">
+      <input
+        id={id}
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        autoComplete={autoComplete}
+        required={required}
+      />
+      <button
+        className="eye-btn"
+        type="button"
+        aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
+        aria-pressed={visible}
+        onClick={() => setVisible((current) => !current)}
+      >
+        <i className={visible ? "bi bi-eye-slash" : "bi bi-eye"} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}

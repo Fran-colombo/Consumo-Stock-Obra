@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { ErrorText } from "../components/ui";
+import { ErrorText, PasswordField } from "../components/ui";
 import { formatDate } from "../lib/format";
 
 type Rec = Record<string, any>;
@@ -16,7 +16,6 @@ export function SettingsPage() {
   const [error, setError] = useState("");
   const [location, setLocation] = useState({ name: "", code: "", location_type: "DEPOSITO" });
   const [account, setAccount] = useState({ email: "", full_name: "", password: "", role: "OPERADOR" });
-  const [showPassword, setShowPassword] = useState(false);
 
   function load() {
     api<typeof settings>("/api/settings").then(setSettings);
@@ -92,11 +91,8 @@ export function SettingsPage() {
           <h2 className="span-2">Usuarios</h2>
           <div className="field"><label>Correo</label><input required type="email" value={account.email} onChange={(event) => setAccount({ ...account, email: event.target.value })} /></div>
           <div className="field"><label>Nombre</label><input required value={account.full_name} onChange={(event) => setAccount({ ...account, full_name: event.target.value })} /></div>
-          <div className="field"><label>Clave</label>
-            <div className="password-row">
-              <input required type={showPassword ? "text" : "password"} value={account.password} onChange={(event) => setAccount({ ...account, password: event.target.value })} />
-              <button className="btn ghost" type="button" aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? "Ocultar" : "Mostrar"}</button>
-            </div>
+          <div className="field"><label htmlFor="new-pass">Clave</label>
+            <PasswordField id="new-pass" required value={account.password} onChange={(password) => setAccount({ ...account, password })} autoComplete="new-password" />
           </div>
           <div className="field"><label>Rol</label>
             <select value={account.role} onChange={(event) => setAccount({ ...account, role: event.target.value })}>

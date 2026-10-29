@@ -43,7 +43,7 @@ export function RubricsPage() {
       <div className="grid grid-2" style={{ marginTop: 14 }}>
         <div className="panel">
           <h2>Rubros</h2>
-          {rows.length === 0 ? <Empty title="Sin rubros" text="Creá los rubros que usa Conkreto. No hay una lista cerrada." /> : (
+          {rows.length === 0 ? <Empty title="Sin rubros" text="Creá los rubros de la obra. No hay una lista cerrada." /> : (
             <ul>{rows.map((row) => <li key={row.id}>{row.code} — {row.name}{row.is_active ? "" : " (inactivo)"}</li>)}</ul>
           )}
         </div>
