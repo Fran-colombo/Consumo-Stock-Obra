@@ -1,0 +1,76 @@
+import enum
+
+
+class UserRole(str, enum.Enum):
+    SYSADMIN = "SYSADMIN"
+    OPERADOR = "OPERADOR"
+
+
+class WorkStatus(str, enum.Enum):
+    PLANIFICADA = "PLANIFICADA"
+    ACTIVA = "ACTIVA"
+    PAUSADA = "PAUSADA"
+    FINALIZADA = "FINALIZADA"
+    CANCELADA = "CANCELADA"
+
+
+class TaskStatus(str, enum.Enum):
+    PENDIENTE = "PENDIENTE"
+    EN_CURSO = "EN_CURSO"
+    FINALIZADA = "FINALIZADA"
+    CANCELADA = "CANCELADA"
+
+
+class LocationType(str, enum.Enum):
+    DEPOSITO = "DEPOSITO"
+    OBRA = "OBRA"
+    OTRO = "OTRO"
+
+
+class RecordStatus(str, enum.Enum):
+    CONFIRMADO = "CONFIRMADO"
+    ANULADO = "ANULADO"
+
+
+class PurchaseOrderStatus(str, enum.Enum):
+    BORRADOR = "BORRADOR"
+    CONFIRMADA = "CONFIRMADA"
+    PARCIAL = "PARCIAL"
+    RECIBIDA = "RECIBIDA"
+    CANCELADA = "CANCELADA"
+
+
+class TransferStatus(str, enum.Enum):
+    REGISTRADA = "REGISTRADA"
+    EN_TRANSITO = "EN_TRANSITO"
+    RECIBIDA_PARCIAL = "RECIBIDA_PARCIAL"
+    RECIBIDA = "RECIBIDA"
+    RECIBIDA_CON_DIFERENCIA = "RECIBIDA_CON_DIFERENCIA"
+    CANCELADA = "CANCELADA"
+
+
+class DiscrepancyStatus(str, enum.Enum):
+    PENDIENTE = "PENDIENTE"
+    DEVUELTA = "DEVUELTA"
+    PERDIDA = "PERDIDA"
+    RECIBIDA = "RECIBIDA"
+
+
+class MovementType(str, enum.Enum):
+    GOODS_RECEIPT = "RECEPCION_COMPRA"
+    RECEIPT_REVERSAL = "REVERSA_RECEPCION"
+    CONSUMPTION = "CONSUMO"
+    CONSUMPTION_REVERSAL = "REVERSA_CONSUMO"
+    TRANSFER_OUT = "TRANSFERENCIA_SALIDA"
+    TRANSFER_IN = "TRANSFERENCIA_ENTRADA"
+    TRANSFER_RETURN = "TRANSFERENCIA_DEVOLUCION"
+    ADJUSTMENT = "AJUSTE"
+
+
+class CalcMethod(str, enum.Enum):
+    COEFFICIENT_PER_EXECUTED = "COEFICIENTE_POR_EJECUTADO"
+
+
+class DeviationStatus(str, enum.Enum):
+    CALCULADO = "CALCULADO"
+    NO_CALCULABLE = "NO_CALCULABLE"
