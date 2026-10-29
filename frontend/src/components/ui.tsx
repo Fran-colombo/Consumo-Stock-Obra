@@ -65,7 +65,7 @@ export function Modal({
       <div className="panel dialog" role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
         <div className="page-head">
           <h2>{title}</h2>
-          <button className="btn ghost" type="button" onClick={onClose}>Cerrar</button>
+          <button className="action ghost" type="button" onClick={onClose}>Cerrar</button>
         </div>
         {children}
       </div>
@@ -92,9 +92,9 @@ export function ConfirmButton({
         <Modal title="Confirmar operación" onClose={() => setOpen(false)}>
           <p>{message}</p>
           <div className="actions">
-            <button className="btn secondary" type="button" onClick={() => setOpen(false)}>Volver</button>
+            <button className="action secondary" type="button" onClick={() => setOpen(false)}>Volver</button>
             <button
-              className="btn warn"
+              className="action warn"
               type="button"
               onClick={async () => {
                 await onConfirm();
@@ -143,7 +143,7 @@ export function AdminFix({
   }
 
   if (!open) {
-    return <button className="btn ghost" type="button" onClick={() => setOpen(true)}>Corregir o anular</button>;
+    return <button className="action ghost" type="button" onClick={() => setOpen(true)}>Corregir o anular</button>;
   }
   return (
     <div className="form-grid">
@@ -151,12 +151,27 @@ export function AdminFix({
       <div className="field"><label>Motivo</label><input aria-label="Motivo de corrección" value={reason} onChange={(event) => setReason(event.target.value)} /></div>
       {onSaveQty ? <div className="field"><label>Nueva cantidad</label><input aria-label="Nueva cantidad" value={qty} onChange={(event) => setQty(event.target.value)} /></div> : null}
       <div className="actions">
-        {onSaveQty ? <button className="btn secondary" type="button" onClick={() => run(() => onSaveQty(qty, reason))}>Guardar cantidad</button> : null}
-        <button className="btn warn" type="button" onClick={() => run(() => onVoid(reason))}>Anular</button>
-        <button className="btn ghost" type="button" onClick={() => setOpen(false)}>Cerrar</button>
+        {onSaveQty ? <button className="action secondary" type="button" onClick={() => run(() => onSaveQty(qty, reason))}>Guardar cantidad</button> : null}
+        <button className="action warn" type="button" onClick={() => run(() => onVoid(reason))}>Anular</button>
+        <button className="action ghost" type="button" onClick={() => setOpen(false)}>Cerrar</button>
       </div>
     </div>
   );
+}
+
+export function useNotice() {
+  const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
+  const dialog = notice ? (
+    <Modal title={notice.title} onClose={() => setNotice(null)}>
+      <p>{notice.message}</p>
+      <button className="action" type="button" onClick={() => setNotice(null)}>Entendido</button>
+    </Modal>
+  ) : null;
+  return {
+    ok: (message: string) => setNotice({ title: "Listo", message }),
+    fail: (message: string) => setNotice({ title: "No se pudo", message }),
+    dialog,
+  };
 }
 
 export function PasswordField({

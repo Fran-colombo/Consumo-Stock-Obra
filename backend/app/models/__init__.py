@@ -16,6 +16,7 @@ from app.models.entities import (  # noqa: F401
     PurchaseOrder,
     PurchaseOrderItem,
     Rubric,
+    RubricRecipeLine,
     StockBalance,
     StockTransfer,
     StockTransferItem,

@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "../api/client";
-import { Badge, Empty, ErrorText, Modal } from "../components/ui";
+import { Badge, Empty, Modal, useNotice } from "../components/ui";
 
 type Work = { id: number; name: string; code: string; address: string | null; status: string; start_date: string | null };
 
@@ -10,7 +10,7 @@ export function WorksPage() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState("");
+  const notice = useNotice();
   const [form, setForm] = useState({ name: "", code: "", address: "", status: "ACTIVA", start_date: "", notes: "" });
 
   function load() {
@@ -23,14 +23,14 @@ export function WorksPage() {
 
   async function create(event: FormEvent) {
     event.preventDefault();
-    setError("");
     try {
       await api("/api/works", { method: "POST", body: JSON.stringify({ ...form, start_date: form.start_date || null, address: form.address || null }) });
       setOpen(false);
       setForm({ name: "", code: "", address: "", status: "ACTIVA", start_date: "", notes: "" });
       load();
+      notice.ok(`${form.name} quedó creada, con su lugar de stock.`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo crear la obra.");
+      notice.fail(err instanceof ApiError ? err.message : "No se pudo crear la obra.");
     }
   }
 
@@ -41,7 +41,7 @@ export function WorksPage() {
           <h1>Obras</h1>
           <p>Cada obra crea su ubicación de stock. El estado no bloquea los movimientos.</p>
         </div>
-        <button className="btn" type="button" onClick={() => setOpen(true)}>Nueva obra</button>
+        <button className="action" type="button" onClick={() => setOpen(true)}>Nueva obra</button>
       </div>
       <div className="toolbar">
         <input className="search" aria-label="Buscar obra" placeholder="Buscar por nombre o código" value={q} onChange={(event) => setQ(event.target.value)} />
@@ -75,7 +75,7 @@ export function WorksPage() {
       {open ? (
         <Modal title="Nueva obra" onClose={() => setOpen(false)}>
           <form onSubmit={create} className="form-grid">
-            {error ? <div className="span-2"><ErrorText error={error} /></div> : null}
+            {notice.dialog}
             <div className="field"><label htmlFor="wn">Nombre</label><input id="wn" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
             <div className="field"><label htmlFor="wc">Código</label><input id="wc" required value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} /></div>
             <div className="field span-2"><label htmlFor="wa">Dirección</label><input id="wa" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} /></div>
@@ -90,7 +90,7 @@ export function WorksPage() {
             </div>
             <div className="field"><label htmlFor="wd">Inicio</label><input id="wd" type="date" value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} /></div>
             <div className="field span-2"><label htmlFor="wnotes">Observaciones</label><textarea id="wnotes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div>
-            <div className="span-2"><button className="btn" type="submit">Crear obra</button></div>
+            <div className="span-2"><button className="action" type="submit">Crear obra</button></div>
           </form>
         </Modal>
       ) : null}

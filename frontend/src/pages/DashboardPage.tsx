@@ -101,7 +101,7 @@ export function DashboardPage() {
       ) : null}
       {data.by_work.length === 0 ? (
         <div className="panel" style={{ marginTop: 14 }}>
-          <Empty title="Todavía no hay consumo para comparar" text="Creá una obra, configurá el coeficiente de una tarea y registrá un avance y un consumo." action={<Link className="btn" to="/obras">Ir a obras</Link>} />
+          <Empty title="Todavía no hay consumo para comparar" text="Creá una obra, configurá el coeficiente de una tarea y registrá un avance y un consumo." action={<Link className="action" to="/obras">Ir a obras</Link>} />
         </div>
       ) : data.comparable_totals ? (
         <div className="grid grid-2" style={{ marginTop: 14 }}>

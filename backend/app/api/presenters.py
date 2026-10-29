@@ -17,6 +17,7 @@ from app.models.entities import (
     PurchaseOrder,
     PurchaseOrderItem,
     Rubric,
+    RubricRecipeLine,
     StockTransfer,
     Supplier,
     Task,
@@ -87,13 +88,32 @@ def location_out(db: Session, location: Location) -> dict:
     }
 
 
-def rubric_out(rubric: Rubric) -> dict:
+def recipe_line_out(db: Session, line: RubricRecipeLine) -> dict:
+    material = db.get(Material, line.material_id)
+    unit = db.get(UnitOfMeasure, material.unit_id) if material else None
+    return {
+        "id": line.id,
+        "material_id": line.material_id,
+        "material_name": material.name if material else None,
+        "coefficient": _qty(line.coefficient),
+        "unit_code": unit.code if unit else None,
+        "unit_name": unit.name if unit else None,
+    }
+
+
+def rubric_out(db: Session, rubric: Rubric) -> dict:
+    unit = db.get(UnitOfMeasure, rubric.coverage_unit_id) if rubric.coverage_unit_id else None
+    lines = db.scalars(select(RubricRecipeLine).where(RubricRecipeLine.rubric_id == rubric.id).order_by(RubricRecipeLine.id)).all()
     return {
         "id": rubric.id,
         "name": rubric.name,
         "code": rubric.code,
         "description": rubric.description,
         "is_active": rubric.is_active,
+        "coverage_unit_id": rubric.coverage_unit_id,
+        "coverage_unit_code": unit.code if unit else None,
+        "coverage_unit_name": unit.name if unit else None,
+        "recipe": [recipe_line_out(db, line) for line in lines],
     }
 
 
@@ -132,6 +152,8 @@ def task_out(db: Session, task: Task) -> dict:
         "execution_start": _iso(task.execution_start),
         "execution_end": _iso(task.execution_end),
         "status": task.status,
+        "pending_reason": task.pending_reason,
+        "work_name": (work.name if (work := db.get(Work, task.work_id)) else None),
         "notes": task.notes,
     }
 

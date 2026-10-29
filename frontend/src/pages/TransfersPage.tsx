@@ -1,76 +1,80 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, ApiError } from "../api/client";
-import { useAuth } from "../auth/AuthContext";
-import { Badge, Empty, ErrorText } from "../components/ui";
-import { formatQty } from "../lib/format";
+import { useNotice } from "../components/ui";
 
 type Rec = Record<string, any>;
 
 export function TransfersPage() {
-  const { user } = useAuth();
-  const [rows, setRows] = useState<Rec[]>([]);
+  const notice = useNotice();
   const [locations, setLocations] = useState<Rec[]>([]);
   const [materials, setMaterials] = useState<Rec[]>([]);
-  const [users, setUsers] = useState<Rec[]>([]);
-  const [stock, setStock] = useState<string | null>(null);
-  const [error, setError] = useState("");
+  const [rows, setRows] = useState<Rec[]>([]);
+  const [less, setLess] = useState(false);
   const [form, setForm] = useState({
     from_location_id: "",
     to_location_id: "",
     material_id: "",
     quantity: "",
-    notes: "",
-    authorized_by_user_id: "",
-    authorized_operational_name: "",
+    received_quantity: "",
+    shortfall_action: "devolver",
+    reason: "",
   });
 
   function load() {
-    api<{ items: Rec[] }>("/api/transfers?page_size=100").then((data) => setRows(data.items));
     api<Rec[]>("/api/locations").then(setLocations);
     api<{ items: Rec[] }>("/api/materials?page_size=100").then((data) => setMaterials(data.items));
-    api<Rec[]>("/api/users").then(setUsers);
+    api<{ items: Rec[] }>("/api/transfers?page_size=20").then((data) => setRows(data.items));
   }
   useEffect(load, []);
-  useEffect(() => {
-    if (!form.from_location_id || !form.material_id) { setStock(null); return; }
-    api<Rec>(`/api/stock/available?material_id=${form.material_id}&location_id=${form.from_location_id}`).then((row) => setStock(row.on_hand));
-  }, [form.from_location_id, form.material_id]);
 
-  async function create(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
+    if (less && !form.reason.trim()) {
+      notice.fail("Si llegó menos, escribí qué pasó con el faltante.");
+      return;
+    }
+    const origin = locations.find((row) => String(row.id) === form.from_location_id);
+    const destination = locations.find((row) => String(row.id) === form.to_location_id);
+    const material = materials.find((row) => String(row.id) === form.material_id);
     try {
-      await api("/api/transfers", {
+      await api("/api/transfers/direct", {
         method: "POST",
         body: JSON.stringify({
           from_location_id: Number(form.from_location_id),
           to_location_id: Number(form.to_location_id),
-          notes: form.notes || null,
-          authorized_by_user_id: form.authorized_by_user_id ? Number(form.authorized_by_user_id) : null,
-          authorized_operational_name: form.authorized_operational_name || null,
-          items: [{ material_id: Number(form.material_id), quantity: form.quantity }],
+          material_id: Number(form.material_id),
+          quantity: form.quantity,
+          received_quantity: less ? form.received_quantity : null,
+          shortfall_action: less ? form.shortfall_action : null,
+          reason: less ? form.reason : null,
         }),
       });
-      setForm({ from_location_id: "", to_location_id: "", material_id: "", quantity: "", notes: "", authorized_by_user_id: "", authorized_operational_name: "" });
+      setForm({ from_location_id: "", to_location_id: "", material_id: "", quantity: "", received_quantity: "", shortfall_action: "devolver", reason: "" });
+      setLess(false);
       load();
+      notice.ok(`${material?.name || "El material"} pasó de ${origin?.name || "origen"} a ${destination?.name || "destino"}.`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo crear el traslado.");
+      notice.fail(err instanceof ApiError ? err.message : "No se pudo transferir el stock.");
     }
   }
 
-  const exceeds = stock !== null && form.quantity !== "" && Number(form.quantity) > Number(stock);
   return (
     <section>
-      <div className="page-head"><div><h1>Transferencias</h1><p>Registrar no mueve stock. El origen se descuenta al despachar y el destino suma al recibir.</p></div></div>
-      {error ? <ErrorText error={error} /> : null}
-      <form className="panel form-grid" onSubmit={create}>
-        <div className="field"><label>Origen</label>
+      {notice.dialog}
+      <div className="page-head">
+        <div>
+          <h1>Transferir stock</h1>
+          <p>Elegís origen, destino, material y cantidad. Con un botón el stock se mueve.</p>
+        </div>
+      </div>
+      <form className="panel form-grid" onSubmit={submit}>
+        <div className="field"><label>Sale de</label>
           <select required value={form.from_location_id} onChange={(event) => setForm({ ...form, from_location_id: event.target.value })}>
             <option value="">Elegir</option>
             {locations.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
           </select>
         </div>
-        <div className="field"><label>Destino</label>
+        <div className="field"><label>Llega a</label>
           <select required value={form.to_location_id} onChange={(event) => setForm({ ...form, to_location_id: event.target.value })}>
             <option value="">Elegir</option>
             {locations.filter((row) => String(row.id) !== form.from_location_id).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
@@ -83,33 +87,26 @@ export function TransfersPage() {
           </select>
         </div>
         <div className="field"><label>Cantidad</label><input required value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /></div>
-        <div className="field"><label>Quién autoriza (usuario)</label>
-          <select value={form.authorized_by_user_id} onChange={(event) => setForm({ ...form, authorized_by_user_id: event.target.value })}>
-            <option value="">Sin usuario</option>
-            {users.map((row) => <option key={row.id} value={row.id}>{row.full_name}</option>)}
-          </select>
-        </div>
-        <div className="field"><label>Nombre operativo, si no tiene usuario</label><input value={form.authorized_operational_name} onChange={(event) => setForm({ ...form, authorized_operational_name: event.target.value })} /></div>
-        <p className="span-2 hint">Disponible en origen: {stock === null ? "elegí origen y material" : formatQty(stock)}. {exceeds ? "Al despachar no va a alcanzar el stock." : ""} Registra {user?.full_name}.</p>
-        <div className="span-2"><button className="btn" type="submit">Registrar traslado</button></div>
+        <label className="span-2"><input type="checkbox" checked={less} onChange={(event) => setLess(event.target.checked)} /> Llegó menos</label>
+        {less ? (
+          <>
+            <div className="field"><label>Cuánto llegó</label><input required value={form.received_quantity} onChange={(event) => setForm({ ...form, received_quantity: event.target.value })} /></div>
+            <div className="field"><label>Qué pasó con el faltante</label>
+              <select value={form.shortfall_action} onChange={(event) => setForm({ ...form, shortfall_action: event.target.value })}>
+                <option value="devolver">Volvió al origen</option>
+                <option value="perdida">Se perdió</option>
+                <option value="recibir">Llegó igual</option>
+              </select>
+            </div>
+            <div className="field span-2"><label>Motivo</label><input required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></div>
+          </>
+        ) : null}
+        <div className="span-2"><button className="action" type="submit">Transferir stock</button></div>
       </form>
       <div className="panel" style={{ marginTop: 14 }}>
-        {rows.length === 0 ? <Empty title="Sin transferencias" text="Creá el galpón en Configuración si todavía no existe, y después registrá el traslado." /> : (
-          <table>
-            <thead><tr><th>Número</th><th>Origen</th><th>Destino</th><th>Estado</th><th>Registró</th><th></th></tr></thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td>{row.number}</td>
-                  <td>{row.from_location_name}</td>
-                  <td>{row.to_location_name}</td>
-                  <td><Badge value={row.status} /></td>
-                  <td>{row.created_by}</td>
-                  <td><Link to={`/transferencias/${row.id}`}>Abrir</Link></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <h2>Últimos movimientos</h2>
+        {rows.length === 0 ? <p className="hint">Todavía no hay traslados.</p> : (
+          <ul>{rows.map((row) => <li key={row.id}>{row.number}: {row.from_location_name} → {row.to_location_name}</li>)}</ul>
         )}
       </div>
     </section>

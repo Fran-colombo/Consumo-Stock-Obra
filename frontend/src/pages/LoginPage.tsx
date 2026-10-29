@@ -41,7 +41,7 @@ export function LoginPage() {
           <label htmlFor="pass">Contraseña</label>
           <PasswordField id="pass" value={password} onChange={setPassword} autoComplete="current-password" required />
         </div>
-        <button className="btn" type="submit" style={{ marginTop: 16 }}>Entrar</button>
+        <button className="action" type="submit" style={{ marginTop: 16 }}>Entrar</button>
       </form>
     </div>
   );

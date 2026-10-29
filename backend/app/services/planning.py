@@ -12,6 +12,7 @@ from app.models.entities import (
     Material,
     MaterialUnitConversion,
     Rubric,
+    RubricRecipeLine,
     Task,
     TaskExecution,
     TheoreticalConsumptionLine,
@@ -19,7 +20,7 @@ from app.models.entities import (
     User,
     Work,
 )
-from app.models.enums import CalcMethod, LocationType, RecordStatus
+from app.models.enums import CalcMethod, LocationType, PendingReason, RecordStatus, TaskStatus
 from app.services.calculations import coefficient_output
 from app.services.common import (
     as_qty,
@@ -203,6 +204,12 @@ def update_rubric(db: Session, rubric: Rubric, user: User, data: dict) -> Rubric
         rubric.description = (data["description"] or "").strip() or None
     if "is_active" in data and data["is_active"] is not None:
         rubric.is_active = data["is_active"]
+    if "coverage_unit_id" in data:
+        if data["coverage_unit_id"] is None:
+            rubric.coverage_unit_id = None
+        else:
+            get_or_404(db, UnitOfMeasure, data["coverage_unit_id"], "la unidad")
+            rubric.coverage_unit_id = data["coverage_unit_id"]
     db.flush()
     return rubric
 
@@ -329,7 +336,7 @@ def conversion_factor(db: Session, material: Material, output_unit_id: int) -> D
     return as_qty(row.factor)
 
 
-def create_task(db: Session, user: User, work_id: int, rubric_id: int, name: str, description: str | None, unit_id: int, planned_qty: Decimal | None, execution_start: date | None, execution_end: date | None, status: str, notes: str | None) -> Task:
+def create_task(db: Session, user: User, work_id: int, rubric_id: int, name: str, description: str | None, unit_id: int, planned_qty: Decimal | None, execution_start: date | None, execution_end: date | None, status: str, notes: str | None, pending_reason: str | None = None) -> Task:
     require_user(user)
     work = get_or_404(db, Work, work_id, "la obra")
     rubric = get_or_404(db, Rubric, rubric_id, "el rubro")
@@ -354,6 +361,7 @@ def create_task(db: Session, user: User, work_id: int, rubric_id: int, name: str
         execution_start=execution_start,
         execution_end=execution_end,
         status=status,
+        pending_reason=_pending_reason(pending_reason),
         notes=(notes or "").strip() or None,
         created_by_user_id=user.id,
         created_at=now_utc(),
@@ -402,7 +410,69 @@ def update_task(db: Session, task: Task, user: User, data: dict) -> Task:
         task.status = data["status"]
     if "notes" in data:
         task.notes = (data["notes"] or "").strip() or None
+    if "pending_reason" in data:
+        task.pending_reason = _pending_reason(data["pending_reason"])
     db.flush()
+    return task
+
+
+def _pending_reason(value: str | None) -> str | None:
+    if value is None or str(value).strip() == "":
+        return None
+    reason = str(value).strip().upper()
+    allowed = {item.value for item in PendingReason}
+    if reason not in allowed:
+        raise AppError(422, "El pendiente tiene que ser por falta de materiales, por otras prioridades o porque hay que hacer algo antes.")
+    return reason
+
+
+def save_recipe_line(db: Session, user: User, rubric: Rubric, material_id: int, coefficient: Decimal) -> RubricRecipeLine:
+    require_user(user)
+    ensure_active(rubric, "El rubro")
+    material = get_or_404(db, Material, material_id, "el material")
+    ensure_active(material, "El material")
+    coeff = as_qty(coefficient)
+    assert_positive(coeff, "El coeficiente")
+    unit = db.get(UnitOfMeasure, material.unit_id)
+    assert_precision(coeff, unit.decimal_places if unit else 4, "El coeficiente")
+    row = db.scalar(
+        select(RubricRecipeLine).where(RubricRecipeLine.rubric_id == rubric.id, RubricRecipeLine.material_id == material.id)
+    )
+    if row is None:
+        row = RubricRecipeLine(rubric_id=rubric.id, material_id=material.id, coefficient=coeff)
+        db.add(row)
+    else:
+        row.coefficient = coeff
+    db.flush()
+    audit(db, user, "GUARDAR_RECETA", "rubric", rubric.id, None, {"material_id": material.id, "coefficient": str(coeff)})
+    return row
+
+
+def create_task_from_recipe(db: Session, user: User, rubric: Rubric, work_id: int, quantity: Decimal, pending_reason: str) -> Task:
+    require_user(user)
+    ensure_active(rubric, "El rubro")
+    if rubric.coverage_unit_id is None:
+        raise AppError(422, "Elegí en qué unidad se mide este rubro, por ejemplo metros cuadrados o cúbicos.")
+    lines = db.scalars(select(RubricRecipeLine).where(RubricRecipeLine.rubric_id == rubric.id).order_by(RubricRecipeLine.id)).all()
+    if not lines:
+        raise AppError(422, "Cargá primero qué materiales usa este rubro.")
+    task = create_task(
+        db,
+        user,
+        work_id,
+        rubric.id,
+        rubric.name,
+        None,
+        rubric.coverage_unit_id,
+        quantity,
+        None,
+        None,
+        TaskStatus.PENDIENTE.value,
+        None,
+        pending_reason,
+    )
+    for line in lines:
+        create_rule(db, user, task, line.material_id, Decimal(str(line.coefficient)), None, None, None)
     return task
 
 

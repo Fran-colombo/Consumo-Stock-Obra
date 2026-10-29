@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { AdminFix, Badge, Empty, ErrorText } from "../components/ui";
+import { AdminFix, Badge, Empty, useNotice } from "../components/ui";
 import { formatDate, formatQty, newKey } from "../lib/format";
 
 type Rec = Record<string, any>;
@@ -14,7 +14,7 @@ export function ConsumptionsPage() {
   const [locations, setLocations] = useState<Rec[]>([]);
   const [rows, setRows] = useState<Rec[]>([]);
   const [available, setAvailable] = useState<string | null>(null);
-  const [error, setError] = useState("");
+  const notice = useNotice();
   const [workId, setWorkId] = useState("");
   const [form, setForm] = useState({ work_id: "", task_id: "", location_id: "", material_id: "", quantity: "", notes: "" });
 
@@ -56,8 +56,9 @@ export function ConsumptionsPage() {
       });
       setForm({ work_id: "", task_id: "", location_id: "", material_id: "", quantity: "", notes: "" });
       load();
+      notice.ok("El consumo quedó registrado y el stock se descontó.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo registrar el consumo.");
+      notice.fail(err instanceof ApiError ? err.message : "No se pudo registrar el consumo.");
     }
   }
 
@@ -72,8 +73,9 @@ export function ConsumptionsPage() {
         body: JSON.stringify({ quantity, reason }),
       });
       load();
+      notice.ok("La corrección quedó registrada.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo corregir.");
+      notice.fail(err instanceof ApiError ? err.message : "No se pudo corregir.");
     }
   }
 
@@ -81,7 +83,7 @@ export function ConsumptionsPage() {
   return (
     <section>
       <div className="page-head"><div><h1>Consumos</h1><p>El consumo descuenta el stock de la ubicación elegida y queda ligado a la tarea.</p></div></div>
-      {error ? <ErrorText error={error} /> : null}
+      {notice.dialog}
       <form className="panel form-grid" onSubmit={submit}>
         <div className="field"><label>Obra</label>
           <select required value={form.work_id} onChange={(event) => setForm({ ...form, work_id: event.target.value, task_id: "" })}>
@@ -110,7 +112,7 @@ export function ConsumptionsPage() {
         <div className="field"><label>Cantidad</label><input required value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /></div>
         <div className="field"><label>Observaciones</label><input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div>
         <p className="span-2 hint">Disponible: {available === null ? "elegí material y ubicación" : formatQty(available)}. {exceeds ? "La cantidad supera las existencias." : ""} El responsable del registro es {user?.full_name}.</p>
-        <div className="span-2"><button className="btn" disabled={exceeds} type="submit">Registrar consumo</button></div>
+        <div className="span-2"><button className="action" disabled={exceeds} type="submit">Registrar consumo</button></div>
       </form>
       <div className="toolbar"><select aria-label="Filtrar obra" value={workId} onChange={(event) => setWorkId(event.target.value)}><option value="">Todas</option>{works.map((work) => <option key={work.id} value={work.id}>{work.name}</option>)}</select></div>
       <div className="panel table-wrap">
@@ -129,7 +131,7 @@ export function ConsumptionsPage() {
                   <td>{row.recorded_by}</td>
                   <td><Badge value={row.status} /></td>
                   <td>
-                    {row.status === "CONFIRMADO" && !row.corrects_consumption_id ? <button className="btn ghost" type="button" onClick={() => correct(row)}>Corregir con movimiento</button> : null}
+                    {row.status === "CONFIRMADO" && !row.corrects_consumption_id ? <button className="action ghost" type="button" onClick={() => correct(row)}>Corregir con movimiento</button> : null}
                     <AdminFix
                       active={row.status === "CONFIRMADO" && !row.corrects_consumption_id}
                       onSaveQty={(quantity, reason) => api(`/api/consumptions/${row.id}`, { method: "PATCH", body: JSON.stringify({ quantity, reason }) }).then(load)}

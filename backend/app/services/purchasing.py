@@ -213,7 +213,11 @@ def net_received(db: Session, item_id: int) -> Decimal:
 
 
 def refresh_order_status(db: Session, order: PurchaseOrder) -> None:
-    if order.status in (PurchaseOrderStatus.BORRADOR.value, PurchaseOrderStatus.CANCELADA.value):
+    if order.status in (
+        PurchaseOrderStatus.BORRADOR.value,
+        PurchaseOrderStatus.CANCELADA.value,
+        PurchaseOrderStatus.UTILIZADA.value,
+    ):
         return
     received_any = False
     pending_any = False
@@ -494,3 +498,52 @@ def edit_receipt_item(db: Session, item: GoodsReceiptItem, user: User, quantity:
     refresh_order_status(db, receipt.order)
     audit(db, user, "CORREGIR_RECEPCION", "goods_receipt_item", item.id, {"quantity": str(before_qty)}, {"quantity": str(qty)}, reason)
     return item
+
+
+def mark_arrived(db: Session, order: PurchaseOrder, user: User, quantity: Decimal | None) -> GoodsReceipt:
+    if quantity is not None and len(order.items) != 1:
+        raise AppError(422, "Indicá la cantidad solo cuando la orden tiene un material.")
+    raw = []
+    for item in order.items:
+        pending = as_qty(Decimal(str(item.qty_ordered)) - net_received(db, item.id))
+        qty = pending if quantity is None else as_qty(quantity)
+        if qty > 0:
+            raw.append({"purchase_order_item_id": item.id, "quantity": qty})
+    if not raw:
+        raise AppError(422, "No hay nada pendiente para recibir.")
+    return register_receipt(db, user, order, order.destination_location_id, raw, None, None)
+
+
+def mark_materials_used(db: Session, order: PurchaseOrder, user: User, task_id: int) -> PurchaseOrder:
+    from app.models.entities import Task
+    from app.services.consumption import register_consumption
+
+    if order.status == PurchaseOrderStatus.UTILIZADA.value:
+        raise AppError(422, "Esos materiales ya se marcaron como usados.")
+    if order.work_id is None:
+        raise AppError(422, "La orden no tiene obra.")
+    task = get_or_404(db, Task, task_id, "la tarea")
+    if task.work_id != order.work_id:
+        raise AppError(422, "Esa tarea no es de esta obra.")
+    used = False
+    for item in order.items:
+        qty = net_received(db, item.id)
+        if qty > 0:
+            used = True
+            register_consumption(
+                db,
+                user,
+                order.work_id,
+                task.id,
+                order.destination_location_id,
+                item.material_id,
+                qty,
+                None,
+                f"Uso de la orden {order.number}",
+            )
+    if not used:
+        raise AppError(422, "Todavía no llegó nada de esta orden.")
+    order.status = PurchaseOrderStatus.UTILIZADA.value
+    db.flush()
+    audit(db, user, "USAR_ORDEN", "purchase_order", order.id, None, {"task_id": task.id, "status": order.status})
+    return order

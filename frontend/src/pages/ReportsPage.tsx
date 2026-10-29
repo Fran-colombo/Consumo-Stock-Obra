@@ -46,11 +46,11 @@ export function ReportsPage() {
         </select>
         <input aria-label="Desde" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
         <input aria-label="Hasta" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-        <button className="btn secondary" type="button" onClick={() => exportReport("teorico-real", "csv")}>CSV teórico vs real</button>
-        <button className="btn secondary" type="button" onClick={() => exportReport("teorico-real", "xlsx")}>Excel teórico vs real</button>
-        <button className="btn ghost" type="button" onClick={() => exportReport("stock", "csv")}>CSV stock</button>
-        <button className="btn ghost" type="button" onClick={() => exportReport("ordenes", "csv")}>CSV órdenes</button>
-        <button className="btn ghost" type="button" onClick={() => exportReport("movimientos", "csv")}>CSV movimientos</button>
+        <button className="action secondary" type="button" onClick={() => exportReport("teorico-real", "csv")}>CSV teórico vs real</button>
+        <button className="action secondary" type="button" onClick={() => exportReport("teorico-real", "xlsx")}>Excel teórico vs real</button>
+        <button className="action ghost" type="button" onClick={() => exportReport("stock", "csv")}>CSV stock</button>
+        <button className="action ghost" type="button" onClick={() => exportReport("ordenes", "csv")}>CSV órdenes</button>
+        <button className="action ghost" type="button" onClick={() => exportReport("movimientos", "csv")}>CSV movimientos</button>
       </div>
       <div className="panel table-wrap">
         {rows.length === 0 ? <Empty title="No hay datos para esos filtros" text="Cuando existan avances y consumos, la comparación va a aparecer acá y en el archivo exportado." /> : (

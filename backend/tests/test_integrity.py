@@ -550,3 +550,83 @@ def _stock(client, headers, material_id, location_id):
         headers=headers,
         params={"material_id": material_id, "location_id": location_id},
     ).json()["on_hand"]
+
+
+def test_recipe_creates_pending_task_and_stock_moves_in_one_step(client):
+    headers = auth(client)
+    world = build_world(client, headers, "OBRA-B")
+    depot = client.post(
+        "/api/locations",
+        headers=headers,
+        json={"name": "Galpón", "code": "GALP-B", "location_type": "DEPOSITO"},
+    )
+    assert depot.status_code == 201, depot.text
+    depot = depot.json()
+    unit = world["unit"]
+    rubric = client.patch(
+        f"/api/rubrics/{world['rubric']['id']}",
+        headers=headers,
+        json={"coverage_unit_id": world["m3"]},
+    )
+    assert rubric.status_code == 200, rubric.text
+    recipe = client.post(
+        f"/api/rubrics/{world['rubric']['id']}/recipe",
+        headers=headers,
+        json={"material_id": world["material"]["id"], "coefficient": "3"},
+    )
+    assert recipe.status_code == 201, recipe.text
+    task = client.post(
+        f"/api/rubrics/{world['rubric']['id']}/tasks",
+        headers=headers,
+        json={"work_id": world["work"]["id"], "quantity": "10", "pending_reason": "FALTAN_MATERIALES"},
+    )
+    assert task.status_code == 201, task.text
+    task = task.json()
+    assert task["pending_reason"] == "FALTAN_MATERIALES"
+    assert task["planned_qty"] == "10.0000"
+    counted = client.post(
+        "/api/adjustments",
+        headers={**headers, "Idempotency-Key": "ajuste-obra-b"},
+        json={
+            "material_id": world["material"]["id"],
+            "location_id": depot["id"],
+            "counted_qty": "40",
+            "reason": "conteo inicial",
+        },
+    )
+    assert counted.status_code == 201, counted.text
+    moved = client.post(
+        "/api/transfers/direct",
+        headers=headers,
+        json={
+            "from_location_id": depot["id"],
+            "to_location_id": world["work"]["location_id"],
+            "material_id": world["material"]["id"],
+            "quantity": "30",
+        },
+    )
+    assert moved.status_code == 201, moved.text
+    assert _stock(client, headers, world["material"]["id"], depot["id"]) == "10.0000"
+    assert _stock(client, headers, world["material"]["id"], world["work"]["location_id"]) == "30.0000"
+    order = client.post(
+        "/api/purchase-orders",
+        headers=headers,
+        json={
+            "supplier_id": world["supplier"]["id"],
+            "destination_location_id": world["work"]["location_id"],
+            "work_id": world["work"]["id"],
+            "items": [{"material_id": world["material"]["id"], "quantity": "5"}],
+        },
+    ).json()
+    assert client.post(f"/api/purchase-orders/{order['id']}/confirm", headers=headers).status_code == 200
+    arrived = client.post(f"/api/purchase-orders/{order['id']}/arrive", headers=headers, json={})
+    assert arrived.status_code == 200, arrived.text
+    assert arrived.json()["status"] == "RECIBIDA"
+    used = client.post(
+        f"/api/purchase-orders/{order['id']}/use",
+        headers=headers,
+        json={"task_id": task["id"]},
+    )
+    assert used.status_code == 200, used.text
+    assert used.json()["status"] == "UTILIZADA"
+    assert _stock(client, headers, world["material"]["id"], world["work"]["location_id"]) == "30.0000"

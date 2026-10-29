@@ -10,7 +10,7 @@ const LINKS = [
   ["/inventario", "Inventario", "bi-boxes"],
   ["/consumos", "Consumos", "bi-clipboard-check"],
   ["/ordenes", "Órdenes de compra", "bi-cart"],
-  ["/transferencias", "Transferencias", "bi-arrow-left-right"],
+  ["/transferencias", "Transferir stock", "bi-arrow-left-right"],
   ["/reportes", "Reportes", "bi-bar-chart"],
   ["/manual", "Manual", "bi-book"],
   ["/configuracion", "Configuración", "bi-sliders"],
@@ -39,14 +39,14 @@ export function Layout() {
         <div className="sidebar-foot">
           <div>{user?.full_name}</div>
           <div>{user?.role === "SYSADMIN" ? "Administrador" : "Operador"}</div>
-          <button className="btn ghost" type="button" onClick={logout} style={{ marginTop: 10, color: "white" }}>
+          <button className="action ghost" type="button" onClick={logout} style={{ marginTop: 10, color: "white" }}>
             Salir
           </button>
         </div>
       </aside>
       <main className="content">
         <div className="topbar">
-          <button className="btn secondary menu-btn" type="button" onClick={() => setOpen((value) => !value)}>
+          <button className="action secondary menu-btn" type="button" onClick={() => setOpen((value) => !value)}>
             Menú
           </button>
           <strong>Consumo Stock en Obra</strong>

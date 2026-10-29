@@ -80,7 +80,7 @@ export function OrderDetailPage() {
             ))}
           </tbody>
         </table>
-        {order.status === "BORRADOR" ? <button className="btn" type="button" onClick={confirm}>Confirmar orden</button> : null}
+        {order.status === "BORRADOR" ? <button className="action" type="button" onClick={confirm}>Confirmar orden</button> : null}
       </div>
       {order.status !== "BORRADOR" && order.status !== "CANCELADA" ? (
         <form className="panel" onSubmit={receive} style={{ marginTop: 14 }}>
@@ -97,7 +97,7 @@ export function OrderDetailPage() {
               <input value={qty[item.id] || ""} onChange={(event) => setQty({ ...qty, [item.id]: event.target.value })} />
             </div>
           ))}
-          <button className="btn" type="submit">Recibir</button>
+          <button className="action" type="submit">Recibir</button>
         </form>
       ) : null}
       <div className="panel" style={{ marginTop: 14 }}>

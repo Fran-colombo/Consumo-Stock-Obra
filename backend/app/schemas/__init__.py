@@ -108,6 +108,18 @@ class RubricUpdate(BaseModel):
     code: str | None = None
     description: str | None = None
     is_active: bool | None = None
+    coverage_unit_id: int | None = None
+
+
+class RecipeLineIn(BaseModel):
+    material_id: int
+    coefficient: Decimal
+
+
+class RubricTaskIn(BaseModel):
+    work_id: int
+    quantity: Decimal
+    pending_reason: str
 
 
 class MaterialIn(BaseModel):
@@ -162,6 +174,7 @@ class TaskUpdate(BaseModel):
     execution_end: date | None = None
     status: str | None = None
     notes: str | None = None
+    pending_reason: str | None = None
 
 
 class ExecutionIn(BaseModel):
@@ -284,6 +297,24 @@ class ConsumptionEdit(BaseModel):
 class TransferItemIn(BaseModel):
     material_id: int
     quantity: Decimal
+
+
+class DirectTransferIn(BaseModel):
+    from_location_id: int
+    to_location_id: int
+    material_id: int
+    quantity: Decimal
+    received_quantity: Decimal | None = None
+    shortfall_action: str | None = None
+    reason: str | None = None
+
+
+class ArriveIn(BaseModel):
+    quantity: Decimal | None = None
+
+
+class UseOrderIn(BaseModel):
+    task_id: int
 
 
 class TransferIn(BaseModel):

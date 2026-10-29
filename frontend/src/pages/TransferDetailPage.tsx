@@ -114,9 +114,9 @@ export function TransferDetailPage() {
             {item.status === "PENDIENTE" ? (
               <div className="actions">
                 <input aria-label="Motivo de la diferencia" placeholder="Motivo" value={resolveReason} onChange={(event) => setResolveReason(event.target.value)} />
-                <button className="btn secondary" type="button" onClick={() => resolve(item.id, "devolver")}>Devolver al origen</button>
-                <button className="btn secondary" type="button" onClick={() => resolve(item.id, "recibir")}>Recibir el resto</button>
-                <button className="btn warn" type="button" onClick={() => resolve(item.id, "perdida")}>Registrar pérdida</button>
+                <button className="action secondary" type="button" onClick={() => resolve(item.id, "devolver")}>Devolver al origen</button>
+                <button className="action secondary" type="button" onClick={() => resolve(item.id, "recibir")}>Recibir el resto</button>
+                <button className="action warn" type="button" onClick={() => resolve(item.id, "perdida")}>Registrar pérdida</button>
               </div>
             ) : null}
           </div>
@@ -132,7 +132,7 @@ export function TransferDetailPage() {
             </select>
           </div>
           <div className="field"><label>Nombre operativo</label><input value={dispatchForm.executed_operational_name} onChange={(event) => setDispatchForm({ ...dispatchForm, executed_operational_name: event.target.value })} /></div>
-          <button className="btn" type="button" onClick={dispatch}>Descontar origen y poner en tránsito</button>
+          <button className="action" type="button" onClick={dispatch}>Descontar origen y poner en tránsito</button>
         </div>
       ) : null}
       {row.status === "EN_TRANSITO" || row.status === "RECIBIDA_PARCIAL" ? (
@@ -152,7 +152,7 @@ export function TransferDetailPage() {
           </div>
           <div className="field"><label>Nombre operativo</label><input value={receiver.received_operational_name} onChange={(event) => setReceiver({ ...receiver, received_operational_name: event.target.value })} /></div>
           <label><input type="checkbox" checked={receiver.close_with_difference} onChange={(event) => setReceiver({ ...receiver, close_with_difference: event.target.checked })} /> Cerrar con diferencia si llega menos. El faltante queda identificado y no se asigna solo a ningún lado.</label>
-          <div><button className="btn" type="submit">Registrar recepción</button></div>
+          <div><button className="action" type="submit">Registrar recepción</button></div>
         </form>
       ) : null}
       <AdminFix

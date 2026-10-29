@@ -255,6 +255,65 @@ def receive_transfer(
     return transfer
 
 
+def move_stock(
+    db: Session,
+    user: User,
+    from_location_id: int,
+    to_location_id: int,
+    material_id: int,
+    quantity: Decimal,
+    received_quantity: Decimal | None,
+    shortfall_action: str | None,
+    reason: str | None,
+) -> StockTransfer:
+    transfer = create_transfer(
+        db,
+        user,
+        from_location_id,
+        to_location_id,
+        [{"material_id": material_id, "quantity": quantity}],
+        None,
+        None,
+        None,
+        None,
+    )
+    dispatch_transfer(db, transfer, user, None, None, None)
+    item = transfer.items[0]
+    sent = as_qty(item.qty_sent)
+    arrived = sent if received_quantity is None else as_qty(received_quantity)
+    if arrived < 0:
+        raise AppError(422, "La cantidad que llegó no puede ser negativa.")
+    if arrived > sent:
+        raise AppError(422, "No puede llegar más de lo que salió.")
+    short = arrived < sent
+    if short and not shortfall_action:
+        raise AppError(422, "Si llegó menos, indicá qué pasó con el faltante.")
+    if short and not (reason or "").strip():
+        raise AppError(422, "Si llegó menos, escribí el motivo.")
+    receive_transfer(
+        db,
+        transfer,
+        user,
+        [{"transfer_item_id": item.id, "quantity": arrived}],
+        None,
+        None,
+        short,
+        None,
+        reason,
+    )
+    if short:
+        discrepancy = db.scalar(
+            select(TransferDiscrepancy).where(
+                TransferDiscrepancy.transfer_item_id == item.id,
+                TransferDiscrepancy.status == DiscrepancyStatus.PENDIENTE.value,
+            )
+        )
+        if discrepancy is None:
+            raise AppError(422, "No quedó registrado el faltante.")
+        resolve_discrepancy(db, discrepancy, user, shortfall_action or "", reason or "")
+    return transfer
+
+
 def cancel_transfer(db: Session, transfer: StockTransfer, user: User, reason: str) -> StockTransfer:
     require_user(user)
     reason = require_reason(reason)

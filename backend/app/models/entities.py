@@ -93,8 +93,11 @@ class Rubric(Base):
     name: Mapped[str] = mapped_column(String(160), index=True)
     code: Mapped[str] = mapped_column(String(40), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    coverage_unit_id: Mapped[int | None] = mapped_column(ForeignKey("units_of_measure.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    coverage_unit: Mapped[UnitOfMeasure | None] = relationship()
 
 
 class Task(Base):
@@ -110,6 +113,7 @@ class Task(Base):
     execution_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     execution_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="PENDIENTE", index=True)
+    pending_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -156,6 +160,19 @@ class Material(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     unit: Mapped[UnitOfMeasure] = relationship()
+
+
+class RubricRecipeLine(Base):
+    __tablename__ = "rubric_recipe_lines"
+    __table_args__ = (UniqueConstraint("rubric_id", "material_id", name="uq_rubric_recipe_material"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rubric_id: Mapped[int] = mapped_column(ForeignKey("rubrics.id", ondelete="RESTRICT"), index=True)
+    material_id: Mapped[int] = mapped_column(ForeignKey("materials.id", ondelete="RESTRICT"), index=True)
+    coefficient: Mapped[Decimal] = mapped_column(QTY)
+
+    rubric: Mapped[Rubric] = relationship()
+    material: Mapped[Material] = relationship()
 
 
 class MaterialUnitConversion(Base):

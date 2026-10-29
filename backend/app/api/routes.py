@@ -58,7 +58,9 @@ from app.schemas import (
     ConsumptionCorrectionIn,
     ConsumptionEdit,
     ConsumptionIn,
+    ArriveIn,
     ConversionIn,
+    DirectTransferIn,
     DispatchIn,
     ExecutionEdit,
     ExecutionIn,
@@ -71,12 +73,14 @@ from app.schemas import (
     OrderItemQty,
     OrderUpdate,
     ReasonIn,
+    RecipeLineIn,
     ReceiptCorrectionIn,
     ReceiptIn,
     ReceiptItemEdit,
     ReceiveTransferIn,
     ResolveDiscrepancyIn,
     RubricIn,
+    RubricTaskIn,
     RubricUpdate,
     RuleIn,
     RuleVersionIn,
@@ -88,6 +92,7 @@ from app.schemas import (
     TransferIn,
     UnitIn,
     UnitUpdate,
+    UseOrderIn,
     UserIn,
     UserUpdate,
     WorkIn,
@@ -113,6 +118,8 @@ from app.services.planning import (
     create_conversion,
     create_rubric,
     create_rule,
+    create_task_from_recipe,
+    save_recipe_line,
     create_task,
     create_unit,
     create_work,
@@ -133,6 +140,8 @@ from app.services.purchasing import (
     change_ordered_qty,
     confirm_purchase_order,
     correct_receipt,
+    mark_arrived,
+    mark_materials_used,
     create_purchase_order,
     create_supplier,
     edit_receipt_item,
@@ -146,6 +155,7 @@ from app.services.transfers import (
     cancel_transfer,
     create_transfer,
     dispatch_transfer,
+    move_stock,
     receive_transfer,
     resolve_discrepancy,
     void_transfer,
@@ -339,18 +349,32 @@ def list_rubrics(q: str | None = None, db: Session = Depends(get_db), _: User = 
     if q and q.strip():
         needle = f"%{q.strip().lower()}%"
         stmt = stmt.where(or_(func.lower(Rubric.name).like(needle), func.lower(Rubric.code).like(needle)))
-    return [rubric_out(row) for row in db.scalars(stmt).all()]
+    return [rubric_out(db, row) for row in db.scalars(stmt).all()]
 
 
 @router.post("/rubrics", status_code=201)
 def post_rubric(body: RubricIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return rubric_out(create_rubric(db, user, body.name, body.code, body.description))
+    return rubric_out(db, create_rubric(db, user, body.name, body.code, body.description))
 
 
 @router.patch("/rubrics/{rubric_id}")
 def patch_rubric(rubric_id: int, body: RubricUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     rubric = get_or_404(db, Rubric, rubric_id, "el rubro")
-    return rubric_out(update_rubric(db, rubric, user, body.model_dump(exclude_unset=True)))
+    return rubric_out(db, update_rubric(db, rubric, user, body.model_dump(exclude_unset=True)))
+
+
+@router.post("/rubrics/{rubric_id}/recipe", status_code=201)
+def post_recipe(rubric_id: int, body: RecipeLineIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    rubric = get_or_404(db, Rubric, rubric_id, "el rubro")
+    save_recipe_line(db, user, rubric, body.material_id, body.coefficient)
+    return rubric_out(db, rubric)
+
+
+@router.post("/rubrics/{rubric_id}/tasks", status_code=201)
+def post_rubric_task(rubric_id: int, body: RubricTaskIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    rubric = get_or_404(db, Rubric, rubric_id, "el rubro")
+    task = create_task_from_recipe(db, user, rubric, body.work_id, body.quantity, body.pending_reason)
+    return task_out(db, task)
 
 
 @router.get("/materials")
@@ -592,6 +616,19 @@ def post_confirm_order(order_id: int, db: Session = Depends(get_db), user: User 
     return order_out(db, confirm_purchase_order(db, order, user))
 
 
+@router.post("/purchase-orders/{order_id}/arrive")
+def post_arrive(order_id: int, body: ArriveIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    order = get_or_404(db, PurchaseOrder, order_id, "la orden")
+    mark_arrived(db, order, user, body.quantity)
+    return order_out(db, order)
+
+
+@router.post("/purchase-orders/{order_id}/use")
+def post_use_order(order_id: int, body: UseOrderIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    order = get_or_404(db, PurchaseOrder, order_id, "la orden")
+    return order_out(db, mark_materials_used(db, order, user, body.task_id))
+
+
 @router.post("/purchase-orders/{order_id}/cancel")
 def post_cancel_order(order_id: int, body: ReasonIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     order = get_or_404(db, PurchaseOrder, order_id, "la orden")
@@ -740,6 +777,22 @@ def list_transfers(
     if location_id is not None:
         rows = [row for row in rows if row.from_location_id == location_id or row.to_location_id == location_id]
     return paginate([transfer_out(db, row) for row in rows], page_number, page_size)
+
+
+@router.post("/transfers/direct", status_code=201)
+def post_direct_transfer(body: DirectTransferIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    transfer = move_stock(
+        db,
+        user,
+        body.from_location_id,
+        body.to_location_id,
+        body.material_id,
+        body.quantity,
+        body.received_quantity,
+        body.shortfall_action,
+        body.reason,
+    )
+    return transfer_out(db, transfer)
 
 
 @router.post("/transfers", status_code=201)

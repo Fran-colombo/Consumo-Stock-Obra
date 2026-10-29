@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
-import { AdminFix, Empty, ErrorText } from "../components/ui";
+import { AdminFix, Empty, useNotice } from "../components/ui";
 import { formatDate, formatQty, labelOf, MOVEMENT_LABELS, newKey } from "../lib/format";
 
 type Rec = Record<string, any>;
@@ -11,7 +11,7 @@ export function InventoryPage() {
   const [materials, setMaterials] = useState<Rec[]>([]);
   const [locations, setLocations] = useState<Rec[]>([]);
   const [q, setQ] = useState("");
-  const [error, setError] = useState("");
+  const notice = useNotice();
   const [adjustments, setAdjustments] = useState<Rec[]>([]);
   const [form, setForm] = useState({ material_id: "", location_id: "", counted_qty: "", reason: "" });
 
@@ -37,17 +37,20 @@ export function InventoryPage() {
           reason: form.reason,
         }),
       });
+      const material = materials.find((row) => String(row.id) === form.material_id);
+      const location = locations.find((row) => String(row.id) === form.location_id);
       setForm({ material_id: "", location_id: "", counted_qty: "", reason: "" });
       load();
+      notice.ok(`Quedaron ${form.counted_qty} de ${material?.name || "ese material"} en ${location?.name || "esa ubicación"}.`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo registrar el ajuste.");
+      notice.fail(err instanceof ApiError ? err.message : "No se pudo registrar el ajuste.");
     }
   }
 
   return (
     <section>
       <div className="page-head"><div><h1>Inventario</h1><p>El disponible es el stock físico. Lo pendiente de compra y lo en tránsito se muestran aparte y no se suman.</p></div></div>
-      {error ? <ErrorText error={error} /> : null}
+      {notice.dialog}
       <div className="toolbar"><input className="search" aria-label="Buscar stock" placeholder="Buscar material o ubicación" value={q} onChange={(event) => setQ(event.target.value)} /></div>
       <div className="panel table-wrap">
         {rows.length === 0 ? <Empty title="No hay existencias" text="Registrá una recepción o un ajuste de conteo para ver el stock por ubicación." /> : (
@@ -85,7 +88,7 @@ export function InventoryPage() {
         </div>
         <div className="field"><label>Cantidad contada</label><input required value={form.counted_qty} onChange={(event) => setForm({ ...form, counted_qty: event.target.value })} /></div>
         <div className="field"><label>Motivo</label><input required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></div>
-        <div className="span-2"><button className="btn" type="submit">Registrar ajuste</button></div>
+        <div className="span-2"><button className="action" type="submit">Registrar ajuste</button></div>
       </form>
       <div className="panel" style={{ marginTop: 14 }}>
         <h2>Ajustes de conteo</h2>

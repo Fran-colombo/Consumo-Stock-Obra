@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { ErrorText, PasswordField } from "../components/ui";
+import { PasswordField, useNotice } from "../components/ui";
 import { formatDate } from "../lib/format";
 
 type Rec = Record<string, any>;
@@ -13,7 +13,7 @@ export function SettingsPage() {
   const [units, setUnits] = useState<Rec[]>([]);
   const [audit, setAudit] = useState<Rec[]>([]);
   const [users, setUsers] = useState<Rec[]>([]);
-  const [error, setError] = useState("");
+  const notice = useNotice();
   const [location, setLocation] = useState({ name: "", code: "", location_type: "DEPOSITO" });
   const [account, setAccount] = useState({ email: "", full_name: "", password: "", role: "OPERADOR" });
 
@@ -30,8 +30,9 @@ export function SettingsPage() {
     try {
       const next = await api<typeof settings>("/api/settings", { method: "PUT", body: JSON.stringify({ [key]: value }) });
       setSettings(next);
+      notice.ok("La política quedó guardada.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo guardar la política.");
+      notice.fail(err instanceof ApiError ? err.message : "No se pudo guardar la política.");
     }
   }
 
@@ -41,8 +42,9 @@ export function SettingsPage() {
       await api("/api/locations", { method: "POST", body: JSON.stringify(location) });
       setLocation({ name: "", code: "", location_type: "DEPOSITO" });
       load();
+      notice.ok(`${location.name} quedó como lugar de stock.`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo crear la ubicación.");
+      notice.fail(err instanceof ApiError ? err.message : "No se pudo crear la ubicación.");
     }
   }
 
@@ -52,15 +54,16 @@ export function SettingsPage() {
       await api("/api/users", { method: "POST", body: JSON.stringify(account) });
       setAccount({ email: "", full_name: "", password: "", role: "OPERADOR" });
       load();
+      notice.ok(`${account.full_name} ya puede entrar con ${account.email}.`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo crear el usuario.");
+      notice.fail(err instanceof ApiError ? err.message : "No se pudo crear el usuario.");
     }
   }
 
   return (
     <section>
       <div className="page-head"><div><h1>Configuración</h1><p>Unidades, ubicaciones y las dos políticas que cambian la integridad del stock.</p></div></div>
-      {error ? <ErrorText error={error} /> : null}
+      {notice.dialog}
       <div className="grid grid-2">
         <div className="panel">
           <h2>Políticas</h2>
@@ -83,7 +86,7 @@ export function SettingsPage() {
             <option value="OTRO">Otra</option>
           </select>
         </div>
-        <div><button className="btn" type="submit">Crear</button></div>
+        <div><button className="action" type="submit">Crear</button></div>
         <ul className="span-2">{locations.map((row) => <li key={row.id}>{row.name} · {row.location_type}{row.work_name ? ` · ${row.work_name}` : ""}</li>)}</ul>
       </form>
       {user?.role === "SYSADMIN" ? (
@@ -100,7 +103,7 @@ export function SettingsPage() {
               <option value="SYSADMIN">Administrador</option>
             </select>
           </div>
-          <div className="span-2"><button className="btn" type="submit">Crear usuario</button></div>
+          <div className="span-2"><button className="action" type="submit">Crear usuario</button></div>
           <ul className="span-2">{users.map((row) => <li key={row.id}>{row.full_name} · {row.email || row.username} · {row.role}</li>)}</ul>
         </form>
       ) : null}

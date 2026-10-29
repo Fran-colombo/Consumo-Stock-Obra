@@ -21,6 +21,12 @@ class TaskStatus(str, enum.Enum):
     CANCELADA = "CANCELADA"
 
 
+class PendingReason(str, enum.Enum):
+    FALTAN_MATERIALES = "FALTAN_MATERIALES"
+    OTRAS_PRIORIDADES = "OTRAS_PRIORIDADES"
+    HAY_QUE_HACER_ANTES = "HAY_QUE_HACER_ANTES"
+
+
 class LocationType(str, enum.Enum):
     DEPOSITO = "DEPOSITO"
     OBRA = "OBRA"
@@ -37,6 +43,7 @@ class PurchaseOrderStatus(str, enum.Enum):
     CONFIRMADA = "CONFIRMADA"
     PARCIAL = "PARCIAL"
     RECIBIDA = "RECIBIDA"
+    UTILIZADA = "UTILIZADA"
     CANCELADA = "CANCELADA"
 
 
