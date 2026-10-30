@@ -24,6 +24,8 @@ from app.models.entities import (
     TaskExecution,
     TaskFormula,
     TaskFormulaLine,
+    TaskFormulaParameter,
+    TaskParameterValue,
     TransferDiscrepancy,
     UnitOfMeasure,
     User,
@@ -122,12 +124,32 @@ def rubric_out(db: Session, rubric: Rubric) -> dict:
 
 def formula_out(db: Session, formula: TaskFormula) -> dict:
     lines = db.scalars(select(TaskFormulaLine).where(TaskFormulaLine.formula_id == formula.id).order_by(TaskFormulaLine.id)).all()
+    parameters = db.scalars(
+        select(TaskFormulaParameter).where(TaskFormulaParameter.formula_id == formula.id).order_by(TaskFormulaParameter.position, TaskFormulaParameter.id)
+    ).all()
+    measure = db.get(UnitOfMeasure, formula.measure_unit_id) if formula.measure_unit_id else None
     return {
         "id": formula.id,
         "name": formula.name,
         "waste_percent": _qty(formula.waste_percent),
         "is_active": formula.is_active,
+        "measure_unit_id": formula.measure_unit_id,
+        "measure_unit_code": measure.code if measure else None,
+        "measure_unit_name": measure.name if measure else None,
+        "parameters": [formula_parameter_out(db, row) for row in parameters],
         "lines": [formula_line_out(db, line) for line in lines],
+    }
+
+
+def formula_parameter_out(db: Session, row: TaskFormulaParameter) -> dict:
+    unit = db.get(UnitOfMeasure, row.unit_id)
+    return {
+        "id": row.id,
+        "name": row.name,
+        "unit_id": row.unit_id,
+        "unit_code": unit.code if unit else None,
+        "unit_name": unit.name if unit else None,
+        "counts": row.counts,
     }
 
 
@@ -186,14 +208,34 @@ def task_out(db: Session, task: Task) -> dict:
         "pending_reason": task.pending_reason,
         "formula_id": task.formula_id,
         "formula_name": (formula.name if (formula := db.get(TaskFormula, task.formula_id)) else None) if task.formula_id else None,
+        "parameters": _task_parameters(db, task),
         "work_name": work.name if work else None,
         "notes": task.notes,
         "needs": _task_needs(db, task, rubric),
     }
 
 
+def _task_parameters(db: Session, task: Task) -> list[dict]:
+    values = db.scalars(select(TaskParameterValue).where(TaskParameterValue.task_id == task.id).order_by(TaskParameterValue.id)).all()
+    rows = []
+    for value in values:
+        param = db.get(TaskFormulaParameter, value.parameter_id)
+        unit = db.get(UnitOfMeasure, param.unit_id) if param else None
+        rows.append(
+            {
+                "parameter_id": value.parameter_id,
+                "name": param.name if param else None,
+                "counts": param.counts if param else False,
+                "value": _qty(value.value),
+                "unit_code": unit.code if unit else None,
+                "unit_name": unit.name if unit else None,
+            }
+        )
+    return rows
+
+
 def _task_needs(db: Session, task: Task, rubric: Rubric | None) -> list[dict]:
-    if task.formula_id is None or task.length_m is None or task.planned_qty is None:
+    if task.formula_id is None or task.planned_qty is None:
         return []
     formula = db.get(TaskFormula, task.formula_id)
     if formula is None:

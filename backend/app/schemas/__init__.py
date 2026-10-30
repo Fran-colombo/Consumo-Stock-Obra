@@ -117,12 +117,15 @@ class RecipeLineIn(BaseModel):
     coefficient: Decimal
 
 
+class TaskParameterValueIn(BaseModel):
+    parameter_id: int
+    value: Decimal | None = None
+
+
 class RubricTaskIn(BaseModel):
     work_id: int
     formula_id: int
-    length_m: Decimal
-    width_m: Decimal
-    thickness_m: Decimal
+    parameters: list[TaskParameterValueIn]
 
 
 class FormulaIn(BaseModel):
@@ -133,6 +136,13 @@ class FormulaUpdate(BaseModel):
     name: str | None = None
     waste_percent: Decimal | None = None
     is_active: bool | None = None
+    measure_unit_id: int | None = None
+
+
+class FormulaParameterIn(BaseModel):
+    name: str
+    unit_id: int
+    counts: bool = True
 
 
 class FormulaLineIn(BaseModel):

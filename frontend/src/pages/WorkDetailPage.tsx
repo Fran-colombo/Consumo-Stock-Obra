@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import { AdminFix, Badge, Empty, Modal, useNotice } from "../components/ui";
-import { TaskMeasures } from "./RubricsPage";
+import { TaskMeasures, describeTask, plannedFrom } from "./RubricsPage";
 import { formatDate, formatPercent, formatQty, labelOf, MOVEMENT_LABELS, newKey } from "../lib/format";
 
 type Rec = Record<string, any>;
@@ -91,14 +91,12 @@ function TasksPanel({ workId, tasks, onChange, onError, onOk }: { workId: string
   const [formulas, setFormulas] = useState<Rec[]>([]);
   const [rubricId, setRubricId] = useState("");
   const [formulaId, setFormulaId] = useState("");
-  const [job, setJob] = useState({ work_id: workId, length_m: "", width_m: "", thickness_m: "" });
+  const [values, setValues] = useState<Record<string, string>>({});
   useEffect(() => {
     api<Rec[]>("/api/rubrics").then((data) => setRubrics(data.filter((row) => row.is_active)));
     api<Rec[]>("/api/formulas").then((data) => setFormulas(data.filter((row) => row.is_active)));
   }, [tasks]);
   const formula = formulas.find((row) => String(row.id) === formulaId);
-  const volume = Number(job.length_m) * Number(job.width_m) * Number(job.thickness_m);
-  const shownVolume = Number.isFinite(volume) && volume > 0 ? volume : null;
 
   async function addTask(event: FormEvent) {
     event.preventDefault();
@@ -106,14 +104,23 @@ function TasksPanel({ workId, tasks, onChange, onError, onOk }: { workId: string
       onError("Elegí el rubro y la fórmula.");
       return;
     }
+    const plan = plannedFrom(formula.parameters || [], values);
+    if (!formula.measure_unit_id || plan.missing) {
+      onError(formula.measure_unit_id ? plan.missing || "Falta completar los parámetros." : "Elegí en qué se mide esta fórmula.");
+      return;
+    }
     try {
       const task = await api<Rec>(`/api/rubrics/${rubricId}/tasks`, {
         method: "POST",
-        body: JSON.stringify({ work_id: Number(workId), formula_id: Number(formulaId), length_m: job.length_m, width_m: job.width_m, thickness_m: job.thickness_m }),
+        body: JSON.stringify({
+          work_id: Number(workId),
+          formula_id: Number(formulaId),
+          parameters: (formula.parameters || []).map((row: Rec) => ({ parameter_id: row.id, value: values[row.id] || null })),
+        }),
       });
-      setJob({ work_id: workId, length_m: "", width_m: "", thickness_m: "" });
+      setValues({});
       const needs = (task.needs || []).map((item: Rec) => `${formatQty(item.needed)} ${item.unit_name} de ${item.material_name}`);
-      onOk(needs.length ? `Quedó pendiente. Son ${formatQty(task.planned_qty)} m³. Hace falta ${needs.join(", ")}.` : "La tarea quedó pendiente.");
+      onOk(needs.length ? `Quedó pendiente. Son ${formatQty(task.planned_qty)} ${task.unit_name || task.unit_code}. Hace falta ${needs.join(", ")}.` : "La tarea quedó pendiente.");
       onChange();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "No se pudo crear la tarea.");
@@ -133,24 +140,24 @@ function TasksPanel({ workId, tasks, onChange, onError, onOk }: { workId: string
         </div>
         <div className="field">
           <label>Fórmula</label>
-          <select required value={formulaId} onChange={(event) => setFormulaId(event.target.value)}>
+          <select required value={formulaId} onChange={(event) => { setFormulaId(event.target.value); setValues({}); }}>
             <option value="">Elegir</option>
             {formulas.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
           </select>
         </div>
         {formula ? (
           <TaskMeasures
-            job={job}
-            setJob={setJob}
+            workId={workId}
+            setWorkId={() => undefined}
+            values={values}
+            setValues={setValues}
             onSubmit={addTask}
-            volume={shownVolume}
-            recipe={formula.lines || []}
-            waste={formula.waste_percent}
+            formula={formula}
             hideWork
           />
         ) : <p className="hint">Elegí la fórmula. Si no está, cargala en Fórmulas para tareas.</p>}
       </div>
-      {tasks.length === 0 ? <div className="panel"><Empty title="Esta obra no tiene tareas" text="Elegí el rubro y las tres medidas." /></div> : tasks.map((task) => (
+      {tasks.length === 0 ? <div className="panel"><Empty title="Esta obra no tiene tareas" text="Elegí el rubro y la fórmula." /></div> : tasks.map((task) => (
         <TaskCard key={task.id} task={task} onChange={onChange} onError={onError} onOk={onOk} />
       ))}
     </div>
@@ -239,7 +246,7 @@ function TaskCard({ task, onChange, onError, onOk }: { task: Rec; onChange: () =
       <div className="page-head">
         <div>
           <h2>{task.name}</h2>
-          <p>{task.rubric_name} · {task.length_m ? `${formatQty(task.length_m)} × ${formatQty(task.width_m)} × ${formatQty(task.thickness_m)} m = ${formatQty(task.planned_qty)} m³` : `Planificado ${formatQty(task.planned_qty)} ${task.unit_code}`} · Ejecutado {formatQty(task.executed_qty)} {task.unit_code}</p>
+          <p>{task.rubric_name} · {describeTask(task)} · Ejecutado {formatQty(task.executed_qty)} {task.unit_code}</p>
         </div>
         <span className={`badge ${task.status === "FINALIZADA" ? "ok" : task.status === "PENDIENTE" ? "warn" : "info"}`}>{taskStatusLabel(task.status)}</span>
       </div>

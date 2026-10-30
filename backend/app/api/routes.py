@@ -79,6 +79,7 @@ from app.schemas import (
     ReceiptCorrectionIn,
     FormulaIn,
     FormulaLineIn,
+    FormulaParameterIn,
     FormulaUpdate,
     ReceiptIn,
     ReceiptItemEdit,
@@ -121,10 +122,12 @@ from app.services.planning import (
     create_location,
     create_material,
     create_conversion,
+    add_formula_parameter,
     create_formula,
     create_rubric,
     create_rule,
     create_task_from_recipe,
+    remove_formula_parameter,
     save_formula_line,
     save_recipe_line,
     update_formula,
@@ -381,7 +384,14 @@ def post_recipe(rubric_id: int, body: RecipeLineIn, db: Session = Depends(get_db
 @router.post("/rubrics/{rubric_id}/tasks", status_code=201)
 def post_rubric_task(rubric_id: int, body: RubricTaskIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     rubric = get_or_404(db, Rubric, rubric_id, "el rubro")
-    task = create_task_from_recipe(db, user, rubric, body.work_id, body.length_m, body.width_m, body.thickness_m, body.formula_id)
+    task = create_task_from_recipe(
+        db,
+        user,
+        rubric,
+        body.work_id,
+        body.formula_id,
+        [item.model_dump() for item in body.parameters],
+    )
     return task_out(db, task)
 
 
@@ -406,6 +416,20 @@ def patch_formula(formula_id: int, body: FormulaUpdate, db: Session = Depends(ge
 def post_formula_line(formula_id: int, body: FormulaLineIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     formula = get_or_404(db, TaskFormula, formula_id, "la fórmula")
     save_formula_line(db, user, formula, body.material_id, body.coefficient)
+    return formula_out(db, formula)
+
+
+@router.post("/formulas/{formula_id}/parameters", status_code=201)
+def post_formula_parameter(formula_id: int, body: FormulaParameterIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    formula = get_or_404(db, TaskFormula, formula_id, "la fórmula")
+    add_formula_parameter(db, user, formula, body.name, body.unit_id, body.counts)
+    return formula_out(db, formula)
+
+
+@router.delete("/formulas/{formula_id}/parameters/{parameter_id}")
+def delete_formula_parameter(formula_id: int, parameter_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    formula = get_or_404(db, TaskFormula, formula_id, "la fórmula")
+    remove_formula_parameter(db, user, formula, parameter_id)
     return formula_out(db, formula)
 
 

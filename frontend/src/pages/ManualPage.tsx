@@ -11,8 +11,8 @@ export function ManualPage() {
         <h2>Cómo se empieza</h2>
         <ol>
           <li>En Materiales, cargá lo que se usa. “Avisar cuando quede menos de” no es lo que hay: es el mínimo. Si el disponible baja de ese número, Inicio lo marca. Lo que hay se ve en Inventario.</li>
-          <li>En Fórmulas para tareas, cargá la mezcla que querés usar. Por ejemplo, 120 kg de cemento y 0,5 m³ de arena por cada metro cúbico. Esos números los escribís vos. El margen es opcional: si ponés 10, el cálculo suma un 10 %. Si lo dejás vacío, no suma nada.</li>
-          <li>La tarea se crea en Rubros y tareas o en la obra. Elegís la fórmula, y pedís largo, ancho y espesor, los tres en metros. 3 × 10 × 0,30 son 9 m³. Cada material sale de la fórmula que elegiste. Queda pendiente, sin un motivo aparte.</li>
+          <li>En Fórmulas para tareas, elegí en qué se mide: metro, metro cuadrado, metro cúbico, unidad, u otra que crees en Configuración. Hasta que no elijas, la fórmula no calcula. Ahí armás los parámetros, vacíos: cada uno tiene nombre, unidad, y si entra en la cuenta. Un contrapiso en metros cúbicos puede ser Largo, Ancho y Espesor. Una medida lineal puede ser solo Largo. Por unidad, una Cantidad. Si un dato no entra en la cuenta, se anota y no cambia el resultado. Después cargás los materiales: cuánto lleva por cada 1 de esa medida, en la unidad de cada material. Esos números los escribís vos. El margen es opcional: si ponés 10, el cálculo suma un 10 %. Si lo dejás vacío, no suma nada.</li>
+          <li>La tarea se crea en Rubros y tareas o en la obra. Elegís la fórmula y completás sus parámetros. La cantidad es el producto de los que entran en la cuenta. Si falta uno, la pantalla lo dice y no calcula materiales. Cada material es su coeficiente por esa cantidad, y por el margen si hay. Queda pendiente.</li>
         </ol>
         <p>Crear la tarea no mueve stock. Al registrar un avance, si la tarea tiene materiales, aparece un aviso con lo que se va a usar y, al confirmar, eso sale del stock de la obra. También podés pasar la tarea a en proceso, trabajando o completado.</p>
 

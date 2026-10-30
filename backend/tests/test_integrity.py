@@ -565,8 +565,22 @@ def test_recipe_creates_pending_task_and_stock_moves_in_one_step(client):
     formula = client.post("/api/formulas", headers=headers, json={"name": "Contrapiso de cascote"})
     assert formula.status_code == 201, formula.text
     formula_id = formula.json()["id"]
-    margin = client.patch(f"/api/formulas/{formula_id}", headers=headers, json={"waste_percent": "10"})
+    margin = client.patch(
+        f"/api/formulas/{formula_id}",
+        headers=headers,
+        json={"waste_percent": "10", "measure_unit_id": world["m3"]},
+    )
     assert margin.status_code == 200, margin.text
+    meter = unit_id(client, headers, "m")
+    parameter_ids = []
+    for name in ("Largo", "Ancho", "Espesor"):
+        added = client.post(
+            f"/api/formulas/{formula_id}/parameters",
+            headers=headers,
+            json={"name": name, "unit_id": meter, "counts": True},
+        )
+        assert added.status_code == 201, added.text
+        parameter_ids.append(next(row["id"] for row in added.json()["parameters"] if row["name"] == name))
     line = client.post(
         f"/api/formulas/{formula_id}/lines",
         headers=headers,
@@ -579,9 +593,11 @@ def test_recipe_creates_pending_task_and_stock_moves_in_one_step(client):
         json={
             "work_id": world["work"]["id"],
             "formula_id": formula_id,
-            "length_m": "3",
-            "width_m": "10",
-            "thickness_m": "0.30",
+            "parameters": [
+                {"parameter_id": parameter_ids[0], "value": "3"},
+                {"parameter_id": parameter_ids[1], "value": "10"},
+                {"parameter_id": parameter_ids[2], "value": "0.30"},
+            ],
         },
     )
     assert task.status_code == 201, task.text
@@ -635,3 +651,69 @@ def test_recipe_creates_pending_task_and_stock_moves_in_one_step(client):
     assert used.status_code == 200, used.text
     assert used.json()["status"] == "UTILIZADA"
     assert _stock(client, headers, world["material"]["id"], world["work"]["location_id"]) == "30.0000"
+
+
+def test_missing_parameter_does_not_calculate_and_notes_stay_out(client):
+    headers = auth(client)
+    world = build_world(client, headers, "OBRA-MED")
+    formula = client.post("/api/formulas", headers=headers, json={"name": "Por unidad"})
+    assert formula.status_code == 201, formula.text
+    formula_id = formula.json()["id"]
+    bare = client.post(
+        f"/api/rubrics/{world['rubric']['id']}/tasks",
+        headers=headers,
+        json={"work_id": world["work"]["id"], "formula_id": formula_id, "parameters": []},
+    )
+    assert bare.status_code == 422
+    assert "se mide" in bare.json()["detail"]
+    measured = client.patch(f"/api/formulas/{formula_id}", headers=headers, json={"measure_unit_id": world["unit"], "waste_percent": "0"})
+    assert measured.status_code == 200, measured.text
+    meter = unit_id(client, headers, "m")
+    counted = client.post(
+        f"/api/formulas/{formula_id}/parameters",
+        headers=headers,
+        json={"name": "Cantidad", "unit_id": world["unit"], "counts": True},
+    )
+    assert counted.status_code == 201, counted.text
+    noted = client.post(
+        f"/api/formulas/{formula_id}/parameters",
+        headers=headers,
+        json={"name": "Observación", "unit_id": meter, "counts": False},
+    )
+    assert noted.status_code == 201, noted.text
+    params = {row["name"]: row["id"] for row in noted.json()["parameters"]}
+    line = client.post(
+        f"/api/formulas/{formula_id}/lines",
+        headers=headers,
+        json={"material_id": world["material"]["id"], "coefficient": "2"},
+    )
+    assert line.status_code == 201, line.text
+    missing = client.post(
+        f"/api/rubrics/{world['rubric']['id']}/tasks",
+        headers=headers,
+        json={
+            "work_id": world["work"]["id"],
+            "formula_id": formula_id,
+            "parameters": [{"parameter_id": params["Observación"], "value": "8"}],
+        },
+    )
+    assert missing.status_code == 422
+    assert "Cantidad" in missing.json()["detail"]
+    task = client.post(
+        f"/api/rubrics/{world['rubric']['id']}/tasks",
+        headers=headers,
+        json={
+            "work_id": world["work"]["id"],
+            "formula_id": formula_id,
+            "parameters": [
+                {"parameter_id": params["Cantidad"], "value": "4"},
+                {"parameter_id": params["Observación"], "value": "8"},
+            ],
+        },
+    )
+    assert task.status_code == 201, task.text
+    task = task.json()
+    assert task["unit_code"] == "u"
+    assert task["planned_qty"] == "4.0000"
+    assert task["needs"][0]["needed"] == "8.0000"
+    assert task["length_m"] is None

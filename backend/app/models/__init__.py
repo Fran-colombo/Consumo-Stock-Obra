@@ -25,6 +25,8 @@ from app.models.entities import (  # noqa: F401
     TaskExecution,
     TaskFormula,
     TaskFormulaLine,
+    TaskFormulaParameter,
+    TaskParameterValue,
     TheoreticalConsumptionLine,
     TransferDiscrepancy,
     UnitOfMeasure,

@@ -187,8 +187,11 @@ class TaskFormula(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(160), index=True)
     waste_percent: Mapped[Decimal] = mapped_column(QTY, default=Decimal("0"))
+    measure_unit_id: Mapped[int | None] = mapped_column(ForeignKey("units_of_measure.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    measure_unit: Mapped[UnitOfMeasure | None] = relationship()
 
 
 class TaskFormulaLine(Base):
@@ -202,6 +205,32 @@ class TaskFormulaLine(Base):
 
     formula: Mapped[TaskFormula] = relationship()
     material: Mapped[Material] = relationship()
+
+
+class TaskFormulaParameter(Base):
+    __tablename__ = "task_formula_parameters"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    formula_id: Mapped[int] = mapped_column(ForeignKey("task_formulas.id", ondelete="RESTRICT"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units_of_measure.id", ondelete="RESTRICT"))
+    counts: Mapped[bool] = mapped_column(Boolean, default=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+    formula: Mapped[TaskFormula] = relationship()
+    unit: Mapped[UnitOfMeasure] = relationship()
+
+
+class TaskParameterValue(Base):
+    __tablename__ = "task_parameter_values"
+    __table_args__ = (UniqueConstraint("task_id", "parameter_id", name="uq_task_parameter"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="RESTRICT"), index=True)
+    parameter_id: Mapped[int] = mapped_column(ForeignKey("task_formula_parameters.id", ondelete="RESTRICT"), index=True)
+    value: Mapped[Decimal | None] = mapped_column(QTY, nullable=True)
+
+    parameter: Mapped[TaskFormulaParameter] = relationship()
 
 
 class MaterialUnitConversion(Base):

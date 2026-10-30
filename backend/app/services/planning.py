@@ -16,6 +16,8 @@ from app.models.entities import (
     Task,
     TaskFormula,
     TaskFormulaLine,
+    TaskFormulaParameter,
+    TaskParameterValue,
     TaskExecution,
     TheoreticalConsumptionLine,
     UnitOfMeasure,
@@ -486,6 +488,12 @@ def update_formula(db: Session, formula: TaskFormula, user: User, data: dict) ->
         if waste > Decimal("100"):
             raise AppError(422, "El margen no puede pasar de 100 %.")
         formula.waste_percent = waste
+    if "measure_unit_id" in data:
+        if data["measure_unit_id"] is None:
+            formula.measure_unit_id = None
+        else:
+            get_or_404(db, UnitOfMeasure, data["measure_unit_id"], "la unidad")
+            formula.measure_unit_id = data["measure_unit_id"]
     db.flush()
     return formula
 
@@ -512,33 +520,84 @@ def save_formula_line(db: Session, user: User, formula: TaskFormula, material_id
     return row
 
 
+def add_formula_parameter(db: Session, user: User, formula: TaskFormula, name: str, unit_id: int, counts: bool) -> TaskFormulaParameter:
+    require_user(user)
+    ensure_active(formula, "La fórmula")
+    cleaned = name.strip()
+    if not cleaned:
+        raise AppError(422, "El nombre del parámetro es obligatorio.")
+    unit = get_or_404(db, UnitOfMeasure, unit_id, "la unidad")
+    last = db.scalar(select(func.max(TaskFormulaParameter.position)).where(TaskFormulaParameter.formula_id == formula.id))
+    row = TaskFormulaParameter(
+        formula_id=formula.id,
+        name=cleaned,
+        unit_id=unit.id,
+        counts=bool(counts),
+        position=int(last or 0) + 1,
+    )
+    db.add(row)
+    db.flush()
+    audit(db, user, "AGREGAR_PARAMETRO", "task_formula", formula.id, None, {"name": cleaned, "unit_id": unit.id, "counts": row.counts})
+    return row
+
+
+def remove_formula_parameter(db: Session, user: User, formula: TaskFormula, parameter_id: int) -> None:
+    require_user(user)
+    row = get_or_404(db, TaskFormulaParameter, parameter_id, "el parámetro")
+    if row.formula_id != formula.id:
+        raise AppError(422, "Ese parámetro no es de esta fórmula.")
+    used = db.scalar(select(func.count()).select_from(TaskParameterValue).where(TaskParameterValue.parameter_id == row.id))
+    if used:
+        raise AppError(422, "Ese parámetro ya se usó en una tarea.")
+    db.delete(row)
+    db.flush()
+
+
 def create_task_from_recipe(
     db: Session,
     user: User,
     rubric: Rubric,
     work_id: int,
-    length_m: Decimal,
-    width_m: Decimal,
-    thickness_m: Decimal,
     formula_id: int,
+    values: list[dict],
 ) -> Task:
     require_user(user)
     ensure_active(rubric, "El rubro")
     formula = get_or_404(db, TaskFormula, formula_id, "la fórmula")
     ensure_active(formula, "La fórmula")
+    if formula.measure_unit_id is None:
+        raise AppError(422, "Elegí en qué se mide esta fórmula.")
     lines = db.scalars(select(TaskFormulaLine).where(TaskFormulaLine.formula_id == formula.id).order_by(TaskFormulaLine.id)).all()
     if not lines:
         raise AppError(422, "Esa fórmula no tiene materiales.")
-    length = as_qty(length_m)
-    width = as_qty(width_m)
-    thickness = as_qty(thickness_m)
-    assert_positive(length, "El largo")
-    assert_positive(width, "El ancho")
-    assert_positive(thickness, "El espesor")
-    volume = as_qty(length * width * thickness)
-    cubic = db.scalar(select(UnitOfMeasure).where(UnitOfMeasure.code == "m3"))
-    if cubic is None:
-        raise AppError(422, "Falta la unidad metro cúbico.")
+    parameters = db.scalars(
+        select(TaskFormulaParameter).where(TaskFormulaParameter.formula_id == formula.id).order_by(TaskFormulaParameter.position, TaskFormulaParameter.id)
+    ).all()
+    counting = [row for row in parameters if row.counts]
+    if not counting:
+        raise AppError(422, "Agregá un parámetro que entre en la cuenta.")
+    given = {int(item["parameter_id"]): item.get("value") for item in values}
+    product = Decimal("1")
+    stored: list[tuple[TaskFormulaParameter, Decimal | None]] = []
+    for param in parameters:
+        raw = given.get(param.id)
+        empty = raw is None or str(raw).strip() == ""
+        if param.counts and empty:
+            raise AppError(422, f"Falta completar {param.name}.")
+        if empty:
+            stored.append((param, None))
+            continue
+        number = as_qty(raw)
+        unit = db.get(UnitOfMeasure, param.unit_id)
+        if param.counts:
+            assert_positive(number, param.name)
+        else:
+            assert_non_negative(number, param.name)
+        assert_precision(number, unit.decimal_places if unit else 4, param.name)
+        if param.counts:
+            product *= number
+        stored.append((param, number))
+    planned = as_qty(product)
     task = create_task(
         db,
         user,
@@ -546,19 +605,19 @@ def create_task_from_recipe(
         rubric.id,
         formula.name,
         None,
-        cubic.id,
-        volume,
+        formula.measure_unit_id,
+        planned,
         None,
         None,
         TaskStatus.PENDIENTE.value,
         None,
         None,
     )
-    task.length_m = length
-    task.width_m = width
-    task.thickness_m = thickness
     task.formula_id = formula.id
     task.waste_percent = formula.waste_percent
+    db.flush()
+    for param, number in stored:
+        db.add(TaskParameterValue(task_id=task.id, parameter_id=param.id, value=number))
     db.flush()
     for line in lines:
         create_rule(db, user, task, line.material_id, Decimal(str(line.coefficient)), None, None, None)
