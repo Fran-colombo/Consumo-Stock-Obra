@@ -425,6 +425,8 @@ def update_task(db: Session, task: Task, user: User, data: dict) -> Task:
         task.notes = (data["notes"] or "").strip() or None
     if "pending_reason" in data:
         task.pending_reason = _pending_reason(data["pending_reason"])
+    if "waste_percent" in data and data["waste_percent"] is not None:
+        task.waste_percent = _margin(data["waste_percent"])
     db.flush()
     return task
 
@@ -494,6 +496,8 @@ def update_formula(db: Session, formula: TaskFormula, user: User, data: dict) ->
         else:
             get_or_404(db, UnitOfMeasure, data["measure_unit_id"], "la unidad")
             formula.measure_unit_id = data["measure_unit_id"]
+    if "notes" in data:
+        formula.notes = (data["notes"] or "").strip() or None
     db.flush()
     return formula
 
@@ -520,24 +524,40 @@ def save_formula_line(db: Session, user: User, formula: TaskFormula, material_id
     return row
 
 
-def add_formula_parameter(db: Session, user: User, formula: TaskFormula, name: str, unit_id: int, counts: bool) -> TaskFormulaParameter:
+def add_formula_parameter(
+    db: Session,
+    user: User,
+    formula: TaskFormula,
+    name: str,
+    unit_id: int,
+    counts: bool,
+    role: str | None = None,
+    factor: Decimal | None = None,
+) -> TaskFormulaParameter:
     require_user(user)
     ensure_active(formula, "La fórmula")
     cleaned = name.strip()
     if not cleaned:
         raise AppError(422, "El nombre del parámetro es obligatorio.")
+    chosen = (role or "").strip() or ("multiplica" if counts else "anota")
+    if chosen not in {"multiplica", "resta", "anota"}:
+        raise AppError(422, "El parámetro multiplica, resta o se anota.")
     unit = get_or_404(db, UnitOfMeasure, unit_id, "la unidad")
+    weight = Decimal("1") if factor is None else as_qty(factor)
+    assert_positive(weight, "El factor")
     last = db.scalar(select(func.max(TaskFormulaParameter.position)).where(TaskFormulaParameter.formula_id == formula.id))
     row = TaskFormulaParameter(
         formula_id=formula.id,
         name=cleaned,
         unit_id=unit.id,
-        counts=bool(counts),
+        counts=chosen == "multiplica",
+        role=chosen,
+        factor=weight,
         position=int(last or 0) + 1,
     )
     db.add(row)
     db.flush()
-    audit(db, user, "AGREGAR_PARAMETRO", "task_formula", formula.id, None, {"name": cleaned, "unit_id": unit.id, "counts": row.counts})
+    audit(db, user, "AGREGAR_PARAMETRO", "task_formula", formula.id, None, {"name": cleaned, "role": chosen, "factor": str(weight)})
     return row
 
 
@@ -553,6 +573,21 @@ def remove_formula_parameter(db: Session, user: User, formula: TaskFormula, para
     db.flush()
 
 
+def _margin(value: Decimal) -> Decimal:
+    waste = as_qty(value)
+    assert_non_negative(waste, "El margen")
+    if waste > Decimal("100"):
+        raise AppError(422, "El margen no puede pasar de 100 %.")
+    return waste
+
+
+def _parameter_role(param: TaskFormulaParameter) -> str:
+    role = (param.role or "").strip()
+    if role in {"multiplica", "resta", "anota"}:
+        return role
+    return "multiplica" if param.counts else "anota"
+
+
 def create_task_from_recipe(
     db: Session,
     user: User,
@@ -560,6 +595,7 @@ def create_task_from_recipe(
     work_id: int,
     formula_id: int,
     values: list[dict],
+    waste_percent: Decimal | None = None,
 ) -> Task:
     require_user(user)
     ensure_active(rubric, "El rubro")
@@ -573,31 +609,38 @@ def create_task_from_recipe(
     parameters = db.scalars(
         select(TaskFormulaParameter).where(TaskFormulaParameter.formula_id == formula.id).order_by(TaskFormulaParameter.position, TaskFormulaParameter.id)
     ).all()
-    counting = [row for row in parameters if row.counts]
-    if not counting:
+    multiplying = [row for row in parameters if _parameter_role(row) == "multiplica"]
+    if not multiplying:
         raise AppError(422, "Agregá un parámetro que entre en la cuenta.")
     given = {int(item["parameter_id"]): item.get("value") for item in values}
     product = Decimal("1")
+    deduction = Decimal("0")
     stored: list[tuple[TaskFormulaParameter, Decimal | None]] = []
     for param in parameters:
+        role = _parameter_role(param)
         raw = given.get(param.id)
         empty = raw is None or str(raw).strip() == ""
-        if param.counts and empty:
+        if role == "multiplica" and empty:
             raise AppError(422, f"Falta completar {param.name}.")
         if empty:
             stored.append((param, None))
             continue
         number = as_qty(raw)
         unit = db.get(UnitOfMeasure, param.unit_id)
-        if param.counts:
+        if role == "multiplica":
             assert_positive(number, param.name)
         else:
             assert_non_negative(number, param.name)
         assert_precision(number, unit.decimal_places if unit else 4, param.name)
-        if param.counts:
-            product *= number
+        weight = as_qty(number * Decimal(str(param.factor if param.factor is not None else 1)))
+        if role == "multiplica":
+            product *= weight
+        elif role == "resta":
+            deduction += weight
         stored.append((param, number))
-    planned = as_qty(product)
+    planned = as_qty(product - deduction)
+    if planned <= 0:
+        raise AppError(422, "La cuenta no da una cantidad.")
     task = create_task(
         db,
         user,
@@ -614,7 +657,7 @@ def create_task_from_recipe(
         None,
     )
     task.formula_id = formula.id
-    task.waste_percent = formula.waste_percent
+    task.waste_percent = formula.waste_percent if waste_percent is None else _margin(waste_percent)
     db.flush()
     for param, number in stored:
         db.add(TaskParameterValue(task_id=task.id, parameter_id=param.id, value=number))

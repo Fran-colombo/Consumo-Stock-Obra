@@ -132,6 +132,7 @@ def formula_out(db: Session, formula: TaskFormula) -> dict:
         "id": formula.id,
         "name": formula.name,
         "waste_percent": _qty(formula.waste_percent),
+        "notes": formula.notes,
         "is_active": formula.is_active,
         "measure_unit_id": formula.measure_unit_id,
         "measure_unit_code": measure.code if measure else None,
@@ -150,6 +151,8 @@ def formula_parameter_out(db: Session, row: TaskFormulaParameter) -> dict:
         "unit_code": unit.code if unit else None,
         "unit_name": unit.name if unit else None,
         "counts": row.counts,
+        "role": row.role or ("multiplica" if row.counts else "anota"),
+        "factor": _qty(row.factor if row.factor is not None else Decimal("1")),
     }
 
 
@@ -207,6 +210,7 @@ def task_out(db: Session, task: Task) -> dict:
         "status": task.status,
         "pending_reason": task.pending_reason,
         "formula_id": task.formula_id,
+        "waste_percent": _qty(task.waste_percent),
         "formula_name": (formula.name if (formula := db.get(TaskFormula, task.formula_id)) else None) if task.formula_id else None,
         "parameters": _task_parameters(db, task),
         "work_name": work.name if work else None,
@@ -226,6 +230,8 @@ def _task_parameters(db: Session, task: Task) -> list[dict]:
                 "parameter_id": value.parameter_id,
                 "name": param.name if param else None,
                 "counts": param.counts if param else False,
+                "role": (param.role or ("multiplica" if param.counts else "anota")) if param else "anota",
+                "factor": _qty(param.factor if param and param.factor is not None else Decimal("1")),
                 "value": _qty(value.value),
                 "unit_code": unit.code if unit else None,
                 "unit_name": unit.name if unit else None,
@@ -241,7 +247,7 @@ def _task_needs(db: Session, task: Task, rubric: Rubric | None) -> list[dict]:
     if formula is None:
         return []
     volume = Decimal(str(task.planned_qty))
-    waste = Decimal(str(formula.waste_percent or 0))
+    waste = Decimal(str(task.waste_percent or 0))
     factor = Decimal("1") + (waste / Decimal("100"))
     lines = db.scalars(select(TaskFormulaLine).where(TaskFormulaLine.formula_id == formula.id).order_by(TaskFormulaLine.id)).all()
     needs = []

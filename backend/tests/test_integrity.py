@@ -717,3 +717,62 @@ def test_missing_parameter_does_not_calculate_and_notes_stay_out(client):
     assert task["planned_qty"] == "4.0000"
     assert task["needs"][0]["needed"] == "8.0000"
     assert task["length_m"] is None
+
+
+def _formula(client, headers, name):
+    rows = client.get("/api/formulas", headers=headers).json()
+    return next(row for row in rows if row["name"] == name)
+
+
+def test_seeded_cases_subtract_openings_and_convert_centimeters(client):
+    headers = auth(client)
+    world = build_world(client, headers, "OBRA-CASO")
+    wall = _formula(client, headers, "Muro de ladrillo hueco 18, soga")
+    assert wall["measure_unit_code"] == "m2"
+    assert wall["waste_percent"] == "5.0000"
+    by_name = {row["name"]: row for row in wall["parameters"]}
+    opened = client.post(
+        f"/api/rubrics/{world['rubric']['id']}/tasks",
+        headers=headers,
+        json={
+            "work_id": world["work"]["id"],
+            "formula_id": wall["id"],
+            "parameters": [
+                {"parameter_id": by_name["Largo"]["id"], "value": "5"},
+                {"parameter_id": by_name["Alto"]["id"], "value": "2.5"},
+                {"parameter_id": by_name["Aberturas"]["id"], "value": "3.6"},
+            ],
+        },
+    )
+    assert opened.status_code == 201, opened.text
+    opened = opened.json()
+    assert opened["planned_qty"] == "8.9000"
+    assert opened["unit_code"] == "m2"
+    bricks = next(row for row in opened["needs"] if row["material_name"] == "Ladrillo hueco 18x18x33")
+    assert bricks["needed"] == "149.5200"
+    concrete = _formula(client, headers, "Hormigón H21")
+    measures = {row["name"]: row for row in concrete["parameters"]}
+    poured = client.post(
+        f"/api/rubrics/{world['rubric']['id']}/tasks",
+        headers=headers,
+        json={
+            "work_id": world["work"]["id"],
+            "formula_id": concrete["id"],
+            "parameters": [
+                {"parameter_id": measures["Largo"]["id"], "value": "4"},
+                {"parameter_id": measures["Ancho"]["id"], "value": "5"},
+                {"parameter_id": measures["Espesor"]["id"], "value": "15"},
+            ],
+        },
+    )
+    assert poured.status_code == 201, poured.text
+    poured = poured.json()
+    assert poured["planned_qty"] == "3.0000"
+    assert poured["unit_code"] == "m3"
+    cement = next(row for row in poured["needs"] if row["material_name"] == "Cemento Portland")
+    assert cement["needed"] == "1155.0000"
+    floor = _formula(client, headers, "Contrapiso de cascote")
+    assert "200 kg" in floor["notes"]
+    changed = client.patch(f"/api/tasks/{poured['id']}", headers=headers, json={"waste_percent": "0"})
+    assert changed.status_code == 200, changed.text
+    assert next(row for row in changed.json()["needs"] if row["material_name"] == "Cemento Portland")["needed"] == "1050.0000"

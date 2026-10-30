@@ -5,24 +5,39 @@ import { formatQty } from "../lib/format";
 
 type Rec = Record<string, any>;
 
+function roleOf(row: Rec) {
+  return row.role || (row.counts ? "multiplica" : "anota");
+}
+
 export function plannedFrom(parameters: Rec[], values: Record<string, string>) {
-  const counting = (parameters || []).filter((row) => row.counts);
-  if (!counting.length) return { qty: null as number | null, missing: "Agregá un parámetro que entre en la cuenta." };
-  const missing = counting.filter((row) => values[row.id] === undefined || values[row.id] === "" || Number(values[row.id]) <= 0);
+  const multiplying = (parameters || []).filter((row) => roleOf(row) === "multiplica");
+  if (!multiplying.length) return { qty: null as number | null, missing: "Agregá un parámetro que entre en la cuenta." };
+  const missing = multiplying.filter((row) => values[row.id] === undefined || values[row.id] === "" || Number(values[row.id]) <= 0);
   if (missing.length) return { qty: null as number | null, missing: `Falta completar ${missing.map((row) => row.name).join(", ")}.` };
-  const qty = counting.reduce((total, row) => total * Number(values[row.id]), 1);
-  return { qty: Number.isFinite(qty) && qty > 0 ? qty : null, missing: null as string | null };
+  const product = multiplying.reduce((total, row) => total * Number(values[row.id]) * Number(row.factor || 1), 1);
+  const deducted = (parameters || [])
+    .filter((row) => roleOf(row) === "resta" && values[row.id] !== undefined && values[row.id] !== "")
+    .reduce((total, row) => total + Number(values[row.id]) * Number(row.factor || 1), 0);
+  const qty = product - deducted;
+  if (!Number.isFinite(qty) || qty <= 0) return { qty: null as number | null, missing: "La cuenta no da una cantidad." };
+  return { qty, missing: null as string | null };
 }
 
 export function describeTask(task: Rec) {
+  const margin = Number(task.waste_percent || 0) > 0 ? ` · +${formatQty(task.waste_percent)} %` : "";
   if (task.parameters?.length) {
-    const parts = task.parameters.filter((row: Rec) => row.counts && row.value != null).map((row: Rec) => `${formatQty(row.value)} ${row.unit_code || ""}`.trim());
-    const notes = task.parameters.filter((row: Rec) => !row.counts && row.value != null).map((row: Rec) => `${row.name}: ${formatQty(row.value)} ${row.unit_code || ""}`.trim());
-    const main = parts.length ? `${parts.join(" × ")} = ${formatQty(task.planned_qty)} ${task.unit_name || task.unit_code || ""}`.trim() : `${formatQty(task.planned_qty)} ${task.unit_name || task.unit_code || ""}`.trim();
-    return notes.length ? `${main}. ${notes.join(". ")}` : main;
+    const multiplying = task.parameters.filter((row: Rec) => roleOf(row) === "multiplica" && row.value != null);
+    const subtracting = task.parameters.filter((row: Rec) => roleOf(row) === "resta" && row.value != null && Number(row.value) > 0);
+    const notes = task.parameters.filter((row: Rec) => roleOf(row) === "anota" && row.value != null);
+    const parts = multiplying.map((row: Rec) => `${formatQty(row.value)} ${row.unit_code || ""}`.trim());
+    const less = subtracting.map((row: Rec) => `${formatQty(row.value)} ${row.unit_code || ""}`.trim());
+    const net = `${formatQty(task.planned_qty)} ${task.unit_name || task.unit_code || ""}`.trim();
+    const expression = parts.length ? `${parts.join(" × ")}${less.length ? ` − ${less.join(" − ")}` : ""} = ${net}` : net;
+    const extra = notes.map((row: Rec) => `${row.name}: ${formatQty(row.value)} ${row.unit_code || ""}`.trim());
+    return `${expression}${margin}${extra.length ? `. ${extra.join(". ")}` : ""}`;
   }
-  if (task.length_m) return `${formatQty(task.length_m)} m × ${formatQty(task.width_m)} m × ${formatQty(task.thickness_m)} m = ${formatQty(task.planned_qty)} m³`;
-  return `${formatQty(task.planned_qty)} ${task.unit_code || ""}`.trim();
+  if (task.length_m) return `${formatQty(task.length_m)} m × ${formatQty(task.width_m)} m × ${formatQty(task.thickness_m)} m = ${formatQty(task.planned_qty)} m³${margin}`;
+  return `${formatQty(task.planned_qty)} ${task.unit_code || ""}${margin}`.trim();
 }
 
 export function RubricsPage() {
@@ -36,6 +51,7 @@ export function RubricsPage() {
   const [formulaId, setFormulaId] = useState("");
   const [workId, setWorkId] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
+  const [waste, setWaste] = useState("");
 
   const selected = rows.find((row) => row.id === selectedId) || null;
 
@@ -89,6 +105,7 @@ export function RubricsPage() {
           work_id: Number(workId),
           formula_id: Number(formulaId),
           parameters: (formula.parameters || []).map((row: Rec) => ({ parameter_id: row.id, value: values[row.id] || null })),
+          waste_percent: waste || "0",
         }),
       });
       setWorkId("");
@@ -108,7 +125,7 @@ export function RubricsPage() {
       <div className="page-head">
         <div>
           <h1>Rubros y tareas</h1>
-          <p>El rubro ordena el trabajo. La fórmula se elige al crear la tarea, y los parámetros se completan ahí.</p>
+          <p>El rubro ordena el trabajo. Al crear la tarea elegís el caso y completás las medidas.</p>
         </div>
       </div>
       <div className="grid grid-2">
@@ -133,7 +150,12 @@ export function RubricsPage() {
             <h2>{selected.name}</h2>
             <div className="field">
               <label>Fórmula</label>
-              <select required value={formulaId} onChange={(event) => { setFormulaId(event.target.value); setValues({}); }}>
+              <select required value={formulaId} onChange={(event) => {
+                const next = formulas.find((row) => String(row.id) === event.target.value);
+                setFormulaId(event.target.value);
+                setValues({});
+                setWaste(next && Number(next.waste_percent) > 0 ? String(Number(next.waste_percent)) : "");
+              }}>
                 <option value="">Elegir</option>
                 {formulas.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
               </select>
@@ -147,7 +169,7 @@ export function RubricsPage() {
                 <ul>{(task.needs || []).map((item: Rec) => <li key={item.material_id}>{formatQty(item.needed)} {item.unit_name} de {item.material_name}</li>)}</ul>
               </article>
             ))}
-            <TaskMeasures workId={workId} setWorkId={setWorkId} values={values} setValues={setValues} onSubmit={addTask} works={works} formula={formulas.find((row) => String(row.id) === formulaId) || null} />
+            <TaskMeasures workId={workId} setWorkId={setWorkId} values={values} setValues={setValues} waste={waste} setWaste={setWaste} onSubmit={addTask} works={works} formula={formulas.find((row) => String(row.id) === formulaId) || null} />
           </div>
         ) : <div className="panel"><p className="hint">Creá el primer rubro.</p></div>}
       </div>
@@ -155,11 +177,21 @@ export function RubricsPage() {
   );
 }
 
+function parameterHint(row: Rec) {
+  const role = roleOf(row);
+  if (role === "resta") return " · se resta";
+  if (role === "anota") return " · no entra en la cuenta";
+  if (Number(row.factor) > 0 && Number(row.factor) !== 1) return " · en centímetros";
+  return "";
+}
+
 export function TaskMeasures({
   workId,
   setWorkId,
   values,
   setValues,
+  waste,
+  setWaste,
   onSubmit,
   works,
   formula,
@@ -169,6 +201,8 @@ export function TaskMeasures({
   setWorkId: (value: string) => void;
   values: Record<string, string>;
   setValues: (value: Record<string, string>) => void;
+  waste: string;
+  setWaste: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
   works?: Rec[];
   formula: Rec | null;
@@ -176,7 +210,7 @@ export function TaskMeasures({
 }) {
   const parameters = formula?.parameters || [];
   const plan = formula?.measure_unit_id ? plannedFrom(parameters, values) : { qty: null, missing: null };
-  const margin = Number(formula?.waste_percent || 0);
+  const margin = Number(waste || 0);
   const recipe = formula?.lines || [];
   const hint = !formula
     ? "Elegí la fórmula."
@@ -195,12 +229,14 @@ export function TaskMeasures({
           </select>
         </div>
       )}
+      {formula?.notes ? <p className="span-2 hint">{formula.notes}</p> : null}
       {parameters.map((row: Rec) => (
         <div className="field" key={row.id}>
-          <label>{row.name} ({row.unit_name}){row.counts ? "" : " · no entra en la cuenta"}</label>
+          <label>{row.name} ({row.unit_name}){parameterHint(row)}</label>
           <input value={values[row.id] || ""} onChange={(event) => setValues({ ...values, [row.id]: event.target.value })} />
         </div>
       ))}
+      <div className="field"><label>Margen, si hace falta</label><input value={waste} placeholder="0" onChange={(event) => setWaste(event.target.value)} /></div>
       <p className="span-2 hint">{hint}</p>
       {plan.qty != null && recipe.length ? (
         <ul className="span-2">

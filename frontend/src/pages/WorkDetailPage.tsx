@@ -92,6 +92,7 @@ function TasksPanel({ workId, tasks, onChange, onError, onOk }: { workId: string
   const [rubricId, setRubricId] = useState("");
   const [formulaId, setFormulaId] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
+  const [waste, setWaste] = useState("");
   useEffect(() => {
     api<Rec[]>("/api/rubrics").then((data) => setRubrics(data.filter((row) => row.is_active)));
     api<Rec[]>("/api/formulas").then((data) => setFormulas(data.filter((row) => row.is_active)));
@@ -116,6 +117,7 @@ function TasksPanel({ workId, tasks, onChange, onError, onOk }: { workId: string
           work_id: Number(workId),
           formula_id: Number(formulaId),
           parameters: (formula.parameters || []).map((row: Rec) => ({ parameter_id: row.id, value: values[row.id] || null })),
+          waste_percent: waste || "0",
         }),
       });
       setValues({});
@@ -140,7 +142,12 @@ function TasksPanel({ workId, tasks, onChange, onError, onOk }: { workId: string
         </div>
         <div className="field">
           <label>Fórmula</label>
-          <select required value={formulaId} onChange={(event) => { setFormulaId(event.target.value); setValues({}); }}>
+          <select required value={formulaId} onChange={(event) => {
+            const next = formulas.find((row) => String(row.id) === event.target.value);
+            setFormulaId(event.target.value);
+            setValues({});
+            setWaste(next && Number(next.waste_percent) > 0 ? String(Number(next.waste_percent)) : "");
+          }}>
             <option value="">Elegir</option>
             {formulas.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
           </select>
@@ -151,6 +158,8 @@ function TasksPanel({ workId, tasks, onChange, onError, onOk }: { workId: string
             setWorkId={() => undefined}
             values={values}
             setValues={setValues}
+            waste={waste}
+            setWaste={setWaste}
             onSubmit={addTask}
             formula={formula}
             hideWork
@@ -179,6 +188,10 @@ function TaskCard({ task, onChange, onError, onOk }: { task: Rec; onChange: () =
   const [executions, setExecutions] = useState<Rec[]>([]);
   const [advance, setAdvance] = useState({ quantity_delta: "", new_total: "", execution_date: "" });
   const [pendingUse, setPendingUse] = useState<Rec[] | null>(null);
+  const [waste, setWaste] = useState(task.waste_percent && Number(task.waste_percent) > 0 ? String(Number(task.waste_percent)) : "");
+  useEffect(() => {
+    setWaste(task.waste_percent && Number(task.waste_percent) > 0 ? String(Number(task.waste_percent)) : "");
+  }, [task.waste_percent]);
   useEffect(() => {
     api<Rec[]>(`/api/tasks/${task.id}/rules`).then(setRules);
     api<Rec[]>(`/api/tasks/${task.id}/executions`).then(setExecutions);
@@ -255,6 +268,19 @@ function TaskCard({ task, onChange, onError, onOk }: { task: Rec; onChange: () =
           <button key={value} className={task.status === value ? "action" : "action secondary"} type="button" onClick={() => setStatus(value, label)}>{label}</button>
         ))}
       </div>
+      <form className="form-grid" onSubmit={async (event) => {
+        event.preventDefault();
+        try {
+          await api(`/api/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ waste_percent: waste || "0" }) });
+          onOk(Number(waste || 0) > 0 ? `El cálculo suma ${formatQty(waste)} % de margen.` : "El cálculo no suma margen.");
+          onChange();
+        } catch (err) {
+          onError(err instanceof ApiError ? err.message : "No se pudo guardar el margen.");
+        }
+      }}>
+        <div className="field"><label>Margen de esta tarea</label><input value={waste} placeholder="0" onChange={(event) => setWaste(event.target.value)} /></div>
+        <div><button className="action secondary" type="submit">Guardar margen</button></div>
+      </form>
       <h3>Va a hacer falta</h3>
       {(task.needs || []).length > 0 ? (
         <ul>{task.needs.map((item: Rec) => <li key={item.material_id}>{formatQty(item.needed)} {item.unit_name} de {item.material_name}</li>)}</ul>

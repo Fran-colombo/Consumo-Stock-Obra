@@ -14,7 +14,8 @@ export function FormulasPage() {
   const [name, setName] = useState("");
   const [waste, setWaste] = useState("");
   const [line, setLine] = useState({ material_id: "", coefficient: "" });
-  const [parameter, setParameter] = useState({ name: "", unit_id: "", counts: true });
+  const [parameter, setParameter] = useState({ name: "", unit_id: "", role: "multiplica", centimeters: false });
+  const [notes, setNotes] = useState("");
   const selected = rows.find((row) => row.id === selectedId) || null;
 
   function load(keepId?: number | null) {
@@ -33,6 +34,7 @@ export function FormulasPage() {
   useEffect(() => {
     if (!selected) return;
     setWaste(selected.waste_percent && Number(selected.waste_percent) > 0 ? String(Number(selected.waste_percent)) : "");
+    setNotes(selected.notes || "");
   }, [selectedId]);
 
   function replace(updated: Rec) {
@@ -70,7 +72,7 @@ export function FormulasPage() {
     try {
       const updated = await api<Rec>(`/api/formulas/${selected.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ waste_percent: waste || "0" }),
+        body: JSON.stringify({ waste_percent: waste || "0", notes }),
       });
       replace(updated);
       notice.ok(Number(updated.waste_percent) > 0 ? `El cálculo suma ${formatQty(updated.waste_percent)} % de margen.` : "El cálculo no suma margen.");
@@ -85,11 +87,17 @@ export function FormulasPage() {
     try {
       const updated = await api<Rec>(`/api/formulas/${selected.id}/parameters`, {
         method: "POST",
-        body: JSON.stringify({ name: parameter.name, unit_id: Number(parameter.unit_id), counts: parameter.counts }),
+        body: JSON.stringify({
+          name: parameter.name,
+          unit_id: Number(parameter.unit_id),
+          role: parameter.role,
+          factor: parameter.role === "multiplica" && parameter.centimeters ? "0.01" : "1",
+        }),
       });
       replace(updated);
-      setParameter({ name: "", unit_id: "", counts: true });
-      notice.ok(parameter.counts ? `${parameter.name} entra en la cuenta.` : `${parameter.name} se anota y no cambia la cuenta.`);
+      const label = parameter.role === "resta" ? `${parameter.name} se resta.` : parameter.role === "anota" ? `${parameter.name} se anota y no cambia la cuenta.` : parameter.centimeters ? `${parameter.name} entra en centímetros.` : `${parameter.name} entra en la cuenta.`;
+      setParameter({ name: "", unit_id: "", role: "multiplica", centimeters: false });
+      notice.ok(label);
     } catch (err) {
       notice.fail(err instanceof ApiError ? err.message : "No se pudo agregar el parámetro.");
     }
@@ -133,7 +141,7 @@ export function FormulasPage() {
       <div className="page-head">
         <div>
           <h1>Fórmulas para tareas</h1>
-          <p>Elegís en qué se mide y armás los parámetros vacíos. Cada material es cuánto lleva por cada 1 de esa medida.</p>
+          <p>Elegís el caso. Ya vienen las dosificaciones, y las podés cambiar. Cada material es cuánto lleva por cada 1 de esa medida.</p>
         </div>
       </div>
       <div className="grid grid-2">
@@ -145,7 +153,7 @@ export function FormulasPage() {
           </form>
           <div className="choice" style={{ marginTop: 14 }}>
             {rows.map((row) => (
-              <button key={row.id} type="button" className={row.id === selectedId ? "active" : ""} onClick={() => { setSelectedId(row.id); setWaste(row.waste_percent && Number(row.waste_percent) > 0 ? String(Number(row.waste_percent)) : ""); }}>
+              <button key={row.id} type="button" className={row.id === selectedId ? "active" : ""} onClick={() => { setSelectedId(row.id); setWaste(row.waste_percent && Number(row.waste_percent) > 0 ? String(Number(row.waste_percent)) : ""); setNotes(row.notes || ""); }}>
                 <strong>{row.name}</strong>
                 <div className="hint">{row.measure_unit_name || "Sin medida"}</div>
               </button>
@@ -164,12 +172,13 @@ export function FormulasPage() {
               <span className="hint">{measureName ? `La cuenta da ${measureName}.` : "Hasta que no elijas la medida, la fórmula no calcula. Si falta una unidad, creala en Configuración."}</span>
             </div>
             <h3>Parámetros</h3>
-            <p className="hint">Cada uno tiene nombre y unidad. Si entra en la cuenta, multiplica. Si no, se anota y el resultado no cambia.</p>
+            {selected.notes ? <p className="hint">{selected.notes}</p> : null}
+            <p className="hint">Cada uno tiene nombre y unidad. Si multiplica, entra en la cuenta. Si resta, se descuenta. Si se anota, no cambia el resultado.</p>
             {selected.parameters?.length ? (
               <ul>
                 {selected.parameters.map((item: Rec) => (
                   <li key={item.id}>
-                    {item.name} ({item.unit_name}) {item.counts ? "· entra en la cuenta" : "· solo se anota"}
+                    {item.name} ({item.unit_name}) {item.role === "resta" ? "· se resta" : item.role === "anota" ? "· solo se anota" : Number(item.factor) !== 1 ? "· entra en centímetros" : "· entra en la cuenta"}
                     {" "}
                     <button className="action ghost" type="button" onClick={() => removeParameter(item.id)}>Sacar</button>
                   </li>
@@ -184,11 +193,19 @@ export function FormulasPage() {
                   {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
                 </select>
               </div>
-              <label className="check span-2"><input type="checkbox" checked={parameter.counts} onChange={(event) => setParameter({ ...parameter, counts: event.target.checked })} /> Entra en la cuenta</label>
+              <div className="field"><label>En la cuenta</label>
+                <select value={parameter.role} onChange={(event) => setParameter({ ...parameter, role: event.target.value })}>
+                  <option value="multiplica">Multiplica</option>
+                  <option value="resta">Resta</option>
+                  <option value="anota">Se anota</option>
+                </select>
+              </div>
+              {parameter.role === "multiplica" ? <label className="span-2"><input type="checkbox" checked={parameter.centimeters} onChange={(event) => setParameter({ ...parameter, centimeters: event.target.checked })} /> Está en centímetros</label> : null}
               <div className="span-2"><button className="action secondary" type="submit">Agregar parámetro</button></div>
             </form>
             <form className="form-grid" onSubmit={saveWaste}>
               <div className="field"><label>Margen, si hace falta</label><input value={waste} placeholder="0" onChange={(event) => setWaste(event.target.value)} /></div>
+              <div className="field span-2"><label>Nota</label><input value={notes} onChange={(event) => setNotes(event.target.value)} /></div>
               <div><button className="action secondary" type="submit">Guardar margen</button></div>
             </form>
             <h3>{measureName ? `Por cada ${measureName}` : "Materiales"}</h3>

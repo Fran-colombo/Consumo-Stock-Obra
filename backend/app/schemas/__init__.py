@@ -126,6 +126,7 @@ class RubricTaskIn(BaseModel):
     work_id: int
     formula_id: int
     parameters: list[TaskParameterValueIn]
+    waste_percent: Decimal | None = None
 
 
 class FormulaIn(BaseModel):
@@ -137,12 +138,15 @@ class FormulaUpdate(BaseModel):
     waste_percent: Decimal | None = None
     is_active: bool | None = None
     measure_unit_id: int | None = None
+    notes: str | None = None
 
 
 class FormulaParameterIn(BaseModel):
     name: str
     unit_id: int
     counts: bool = True
+    role: str | None = None
+    factor: Decimal | None = None
 
 
 class FormulaLineIn(BaseModel):
@@ -203,6 +207,7 @@ class TaskUpdate(BaseModel):
     status: str | None = None
     notes: str | None = None
     pending_reason: str | None = None
+    waste_percent: Decimal | None = None
 
 
 class ExecutionIn(BaseModel):

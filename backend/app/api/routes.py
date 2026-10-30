@@ -391,6 +391,7 @@ def post_rubric_task(rubric_id: int, body: RubricTaskIn, db: Session = Depends(g
         body.work_id,
         body.formula_id,
         [item.model_dump() for item in body.parameters],
+        body.waste_percent,
     )
     return task_out(db, task)
 
@@ -422,7 +423,7 @@ def post_formula_line(formula_id: int, body: FormulaLineIn, db: Session = Depend
 @router.post("/formulas/{formula_id}/parameters", status_code=201)
 def post_formula_parameter(formula_id: int, body: FormulaParameterIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     formula = get_or_404(db, TaskFormula, formula_id, "la fórmula")
-    add_formula_parameter(db, user, formula, body.name, body.unit_id, body.counts)
+    add_formula_parameter(db, user, formula, body.name, body.unit_id, body.counts, body.role, body.factor)
     return formula_out(db, formula)
 
 

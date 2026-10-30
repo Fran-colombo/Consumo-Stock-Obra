@@ -26,6 +26,7 @@ UNITS = [
     ("m3", "Metro cúbico", 3),
     ("m2", "Metro cuadrado", 3),
     ("m", "Metro", 3),
+    ("cm", "Centímetro", 2),
     ("l", "Litro", 3),
     ("u", "Unidad", 0),
 ]

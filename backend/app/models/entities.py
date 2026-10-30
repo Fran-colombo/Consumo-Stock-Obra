@@ -188,6 +188,7 @@ class TaskFormula(Base):
     name: Mapped[str] = mapped_column(String(160), index=True)
     waste_percent: Mapped[Decimal] = mapped_column(QTY, default=Decimal("0"))
     measure_unit_id: Mapped[int | None] = mapped_column(ForeignKey("units_of_measure.id"), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -215,6 +216,8 @@ class TaskFormulaParameter(Base):
     name: Mapped[str] = mapped_column(String(80))
     unit_id: Mapped[int] = mapped_column(ForeignKey("units_of_measure.id", ondelete="RESTRICT"))
     counts: Mapped[bool] = mapped_column(Boolean, default=True)
+    role: Mapped[str] = mapped_column(String(20), default="multiplica")
+    factor: Mapped[Decimal] = mapped_column(QTY, default=Decimal("1"))
     position: Mapped[int] = mapped_column(Integer, default=0)
 
     formula: Mapped[TaskFormula] = relationship()
